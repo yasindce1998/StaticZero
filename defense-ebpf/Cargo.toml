@@ -1,0 +1,21 @@
+[package]
+name = "staticzero-defense-ebpf"
+version = "0.1.0"
+edition = "2021"
+description = "eBPF programs for telecom network defense and anomaly detection"
+
+[dependencies]
+aya-ebpf = "~0.1"
+aya-log-ebpf = "~0.1"
+common = { package = "staticzero-common", path = "../common", default-features = false }
+
+[[bin]]
+name = "staticzero-defense"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+panic = "abort"
+opt-level = 2
+debug = false
+strip = "none"

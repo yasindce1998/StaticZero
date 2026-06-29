@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "common",
+    "offense-ebpf",
+    "offense",
+    "defense-ebpf",
+    "defense",
+    "tools",
+]
+resolver = "2"

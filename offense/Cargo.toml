@@ -1,0 +1,16 @@
+[package]
+name = "staticzero-offense"
+version = "0.1.0"
+edition = "2021"
+description = "User-space loader for StaticZero telecom exploitation eBPF programs"
+
+[dependencies]
+common = { package = "staticzero-common", path = "../common", features = ["user"] }
+anyhow = "1"
+aya = "~0.12"
+aya-log = "~0.2"
+bytes = "1"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

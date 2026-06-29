@@ -1,0 +1,26 @@
+[package]
+name = "staticzero-tools"
+version = "0.1.0"
+edition = "2021"
+description = "SDR integration, modem firmware analysis, and lab automation tools for StaticZero"
+
+[[bin]]
+name = "sdr-bridge"
+path = "src/sdr_integration.rs"
+
+[[bin]]
+name = "modem-firmware"
+path = "src/modem_firmware.rs"
+
+[[bin]]
+name = "protocol-correlator"
+path = "src/protocol_correlator.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

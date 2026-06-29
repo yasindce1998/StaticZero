@@ -1,0 +1,13 @@
+[package]
+name = "staticzero-common"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types, constants, and eBPF map value structs for StaticZero telecom security research"
+
+[features]
+default = []
+user = ["dep:serde"]
+
+[dependencies]
+aya-ebpf = { version = "0.1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }

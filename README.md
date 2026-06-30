@@ -1,5 +1,12 @@
 # StaticZero
 
+[![CI](https://github.com/yasindce1998/StaticZero/actions/workflows/ci.yml/badge.svg)](https://github.com/yasindce1998/StaticZero/actions/workflows/ci.yml)
+[![Release](https://github.com/yasindce1998/StaticZero/actions/workflows/release.yml/badge.svg)](https://github.com/yasindce1998/StaticZero/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/yasindce1998/StaticZero)](https://github.com/yasindce1998/StaticZero/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-nightly-orange.svg)](https://www.rust-lang.org/)
+[![eBPF](https://img.shields.io/badge/eBPF-CO--RE-green.svg)](https://ebpf.io/)
+
 eBPF-based telecom security research framework covering 2G through 5G and non-terrestrial networks (satellite, GNSS, aviation). Operates at the kernel level using Linux eBPF for real-time interception, analysis, and anomaly detection across cellular and satellite protocols.
 
 > **Research/educational purposes only.** Unauthorized interception of telecommunications is illegal in most jurisdictions.

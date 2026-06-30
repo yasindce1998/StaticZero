@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use tracing::{error, info};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub engine: EngineConfig,
@@ -94,16 +94,6 @@ fn default_location_tracking_min_cells() -> usize {
     3
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            engine: EngineConfig::default(),
-            persistence: PersistenceConfig::default(),
-            server: ServerConfig::default(),
-            thresholds: ThresholdConfig::default(),
-        }
-    }
-}
 
 impl Default for EngineConfig {
     fn default() -> Self {

@@ -169,16 +169,14 @@ pub(crate) static GNSS_SIGNAL_STATE: HashMap<u32, GnssSignalState> =
     HashMap::with_max_entries(64, 0);
 
 #[map]
-pub(crate) static NTN_TIMING_STATE: HashMap<u32, NtnTimingState> =
-    HashMap::with_max_entries(16, 0);
+pub(crate) static NTN_TIMING_STATE: HashMap<u32, NtnTimingState> = HashMap::with_max_entries(16, 0);
 
 #[map]
 pub(crate) static STARLINK_SESSIONS: HashMap<u64, StarlinkSessionState> =
     HashMap::with_max_entries(32, 0);
 
 #[map]
-pub(crate) static ADSB_AIRCRAFT: HashMap<u32, AdsbAircraftState> =
-    HashMap::with_max_entries(64, 0);
+pub(crate) static ADSB_AIRCRAFT: HashMap<u32, AdsbAircraftState> = HashMap::with_max_entries(64, 0);
 
 #[map]
 pub(crate) static SAT_WIPE_FLAG: aya_ebpf::maps::Array<u32> =

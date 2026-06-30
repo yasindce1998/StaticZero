@@ -368,7 +368,10 @@ async fn main() -> Result<()> {
         let sat_xdp_progs = [
             ("shadow_isl_fingerprint", "F130: ISL Laser Link Fingerprint"),
             ("shadow_gnss_l1_spoof", "F133: GPS L1 C/A Code Spoofing"),
-            ("shadow_gnss_l5_spoof", "F134: Multi-Constellation L5/E5 Spoofing"),
+            (
+                "shadow_gnss_l5_spoof",
+                "F134: Multi-Constellation L5/E5 Spoofing",
+            ),
         ];
 
         for (name, desc) in &sat_xdp_progs {
@@ -382,10 +385,22 @@ async fn main() -> Result<()> {
 
         // TC classifiers for satellite injection
         let tc_sat = [
-            ("shadow_transponder_hijack", "F122: Transponder Hijack Injection"),
-            ("shadow_ntn_gateway_inject", "F124: NTN-5G Core Gateway Injection"),
-            ("shadow_leo_signaling_inject", "F126: LEO Constellation Signaling Injection"),
-            ("shadow_scpc_carrier_manip", "F128: SCPC Carrier Manipulation"),
+            (
+                "shadow_transponder_hijack",
+                "F122: Transponder Hijack Injection",
+            ),
+            (
+                "shadow_ntn_gateway_inject",
+                "F124: NTN-5G Core Gateway Injection",
+            ),
+            (
+                "shadow_leo_signaling_inject",
+                "F126: LEO Constellation Signaling Injection",
+            ),
+            (
+                "shadow_scpc_carrier_manip",
+                "F128: SCPC Carrier Manipulation",
+            ),
             ("shadow_adsb_inject", "F131: ADS-B/ACARS Frame Injection"),
         ];
 

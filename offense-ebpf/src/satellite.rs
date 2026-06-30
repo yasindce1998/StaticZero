@@ -7,10 +7,10 @@ use aya_ebpf::{
 use common::{
     AdsbAircraftState, EventHeader, GnssSignalState, NtnTimingState, SatelliteLinkState,
     StarlinkSessionState, EVENT_ADSB_INJECT, EVENT_DVBS2_INTERCEPT, EVENT_GNSS_L1_SPOOF,
-    EVENT_GNSS_L5_SPOOF, EVENT_IRIDIUM_CAPTURE, EVENT_ISL_FINGERPRINT,
-    EVENT_LEO_SIGNALING_INJECT, EVENT_NTN_GATEWAY_INJECT, EVENT_NTN_TIMING_EXPLOIT,
-    EVENT_SARSAT_BEACON_SPOOF, EVENT_SCPC_CARRIER_MANIP, EVENT_STARLINK_AUTH_PROBE,
-    EVENT_TRANSPONDER_HIJACK, EVENT_VSAT_FIRMWARE_EXTRACT,
+    EVENT_GNSS_L5_SPOOF, EVENT_IRIDIUM_CAPTURE, EVENT_ISL_FINGERPRINT, EVENT_LEO_SIGNALING_INJECT,
+    EVENT_NTN_GATEWAY_INJECT, EVENT_NTN_TIMING_EXPLOIT, EVENT_SARSAT_BEACON_SPOOF,
+    EVENT_SCPC_CARRIER_MANIP, EVENT_STARLINK_AUTH_PROBE, EVENT_TRANSPONDER_HIJACK,
+    EVENT_VSAT_FIRMWARE_EXTRACT,
 };
 
 use crate::maps::*;
@@ -107,9 +107,7 @@ fn try_transponder_hijack(ctx: &TcContext) -> Result<i32, i64> {
     }
 
     let payload_offset = ETH_HDR_LEN + IP_HDR_LEN + UDP_HDR_LEN;
-    let marker = unsafe {
-        *((data + payload_offset) as *const u8)
-    };
+    let marker = unsafe { *((data + payload_offset) as *const u8) };
 
     if marker == DVB_S2X_PL_HEADER {
         let carrier_byte = unsafe { *((data + payload_offset + 1) as *const u8) };
@@ -414,7 +412,9 @@ fn try_starlink_auth_probe(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let magic = u32::from_be_bytes([0, hdr[0], hdr[1], hdr[2]]);
     if magic == GRPC_MAGIC {
-        let token_fragment = u64::from_be_bytes([hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5], hdr[6], hdr[7]]);
+        let token_fragment = u64::from_be_bytes([
+            hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5], hdr[6], hdr[7],
+        ]);
         let terminal_id = token_fragment;
 
         let state = StarlinkSessionState {

@@ -65,7 +65,10 @@ pub fn format_alert_details(alert: &DefenseAlert) -> String {
             format!("terminal_id={}, fw_size={}", alert.context, detail_u64)
         }
         ALERT_STARLINK_AUTH => {
-            format!("terminal_hash={}, token_reuse={}", alert.context, detail_u64)
+            format!(
+                "terminal_hash={}, token_reuse={}",
+                alert.context, detail_u64
+            )
         }
         ALERT_AVIATION_INTEGRITY => {
             format!("icao_addr={}, altitude_rate={}", alert.context, detail_u64)
@@ -535,9 +538,7 @@ impl TelecomCorrelationEngine {
         // Satellite + NTN terrestrial crossover: NTN anomaly + NAS replay
         if layers.contains(&TelecomLayer::Satellite) && layers.contains(&TelecomLayer::Nas) {
             let sat_events = window.events_in_layer(TelecomLayer::Satellite);
-            let has_ntn = sat_events
-                .iter()
-                .any(|e| e.event_type == ALERT_NTN_ANOMALY);
+            let has_ntn = sat_events.iter().any(|e| e.event_type == ALERT_NTN_ANOMALY);
 
             if has_ntn {
                 let threat = self.build_threat(

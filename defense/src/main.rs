@@ -295,18 +295,12 @@ async fn main() -> Result<()> {
                 "detect_vsat_integrity",
                 "Module 36: VSAT/SCPC Integrity Monitor",
             ),
-            (
-                "detect_starlink_auth",
-                "Module 37: Starlink Auth Monitor",
-            ),
+            ("detect_starlink_auth", "Module 37: Starlink Auth Monitor"),
             (
                 "detect_aviation_integrity",
                 "Module 38: Aviation Signal Integrity",
             ),
-            (
-                "detect_gnss_spoofing",
-                "Module 39: GNSS Spoofing Detection",
-            ),
+            ("detect_gnss_spoofing", "Module 39: GNSS Spoofing Detection"),
         ];
 
         for (name, desc) in &probes_sat {

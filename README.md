@@ -18,7 +18,7 @@ staticzero/
 └── scripts/          # Lab automation
 ```
 
-## Offensive Capabilities (F89–F108)
+## Offensive Capabilities (F89–F120)
 
 ### Core Telecom Interception (F89–F100)
 
@@ -50,7 +50,24 @@ staticzero/
 | 107 | SUPL/Location Spoofing | SUPL SET forge, ULP falsification, A-GPS injection |
 | 108 | Roaming/IPX Pivoting | GRX/IPX route injection, VPLMN impersonation |
 
-## Defensive Capabilities (Modules 16–28)
+### 5G Advanced Exploitation (F109–F120)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 109 | PBCH/SIB Broadcast Spoofing | kprobe: `tty_write` | MIB/SIB injection for fake cell selection |
+| 110 | RRC Measurement Manipulation | kprobe: `qmi_wwan_rx_fixup` | Tamper RSRP/RSRQ to influence handover |
+| 111 | Handover Hijacking | TC (SCTP:38412/36422) | NGAP/X2AP handover command injection |
+| 112 | HTTP/2 SBI Exploitation | TC (ports 7777–7780) | NF-to-NF service API manipulation |
+| 113 | NRF/AUSF/UDM API Abuse | TC (port 7778) | Rogue NF registration, discovery abuse |
+| 114 | OAuth2 Token Theft | kprobe: `tcp_sendmsg` | Bearer tokens between Network Functions |
+| 115 | Jamming Detection Evasion | XDP on SDR iface | Anti-detection waveform patterns |
+| 116 | MIMO Beamforming Fingerprint | kprobe: `qmi_wwan_rx_fixup` | CSI-RS/SSB beam pattern extraction |
+| 117 | Sidelink PC5/V2X Exploit | TC (UDP:38472) | ProSe/C-V2X L2 injection and tracking |
+| 118 | 5G-AKA Protocol Downgrade | kprobe: `tcp_sendmsg` | Force 5G-AKA → EAP-AKA' fallback |
+| 119 | SUCI Replay Attack | kprobe: `tcp_sendmsg` | Replay SUCI for cross-session tracking |
+| 120 | ARPF Key Extraction | kprobe: `tcp_sendmsg` | Probe UDM/ARPF for auth vectors/keys |
+
+## Defensive Capabilities (Modules 16–32)
 
 ### Basic Telecom Detection (16–23)
 
@@ -74,6 +91,39 @@ staticzero/
 | 26 | Slice Isolation Verification | S-NSSAI consistency, cross-slice leakage |
 | 27 | Roaming Anomaly Detection | Unusual VPLMN, IPX route changes, billing anomalies |
 | 28 | RF Fingerprint Analysis | Tower hardware fingerprint deviation |
+
+### 5G Core Defense (29–32)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 29 | SBI Anomaly Detection | Unknown NF registration, OAuth2 reuse, abnormal API rates |
+| 30 | Handover Integrity Monitoring | Handover to unregistered cells, measurement inconsistencies |
+| 31 | RAN Sharing Isolation | Cross-operator resource access, PLMN boundary violations |
+| 32 | Signaling Storm Detection | NAS message rate spikes, coordinated attach/paging floods |
+
+## Correlation Engine
+
+Cross-layer protocol correlation detects complex attack chains that single-module detection would miss. The `TelecomCorrelationEngine` ingests alerts from all modules and identifies compound threats across six protocol layers (Radio, NAS, Transport, Signaling, Core, SBI).
+
+Threat categories: IMSI Catching, MitM, Protocol Downgrade, Signaling Abuse, Toll Fraud, Location Tracking, Data Interception, Service Denial, Slice Escape, Roaming Exploit, SBI Compromise, Handover Hijack, RAN Sharing Breach, Signaling Storm, Identity Exposure.
+
+## Tools
+
+### SDR Bridge
+
+Hardware-abstracted radio interface supporting HackRF, bladeRF, USRP, RTL-SDR, and LimeSDR. Modes: Scan, Capture, Inject, Relay. JSON control API on TCP port 9999.
+
+### Protocol Dissectors
+
+- **PFCP** (N4: SMF↔UPF) — Session/Association/Heartbeat parsing per 3GPP TS 29.244
+- **NGAP** (N2: AMF↔gNB) — UE context, handover, PDU session, paging per TS 38.413
+- **XnAP** (Xn: gNB↔gNB) — Handover preparation, SN status transfer, RAN paging per TS 38.423
+
+## Documentation
+
+- [docs/usecase.md](docs/usecase.md) — Use cases, how-to guides, full offense/defense reference
+- [docs/TELECOM_THREAT_MODEL.md](docs/TELECOM_THREAT_MODEL.md) — Attack trees, threat actors, MITRE mapping
+- [docs/LAB_SETUP.md](docs/LAB_SETUP.md) — Isolated lab environment configuration
 
 ## Requirements
 

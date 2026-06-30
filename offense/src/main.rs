@@ -54,6 +54,18 @@ struct Cli {
     /// WiFi calling interface
     #[arg(long, default_value = "wlan0")]
     wifi_iface: String,
+
+    /// Enable 5G advanced exploitation (F109-F120: RAN, SBI, radio, identity)
+    #[arg(long)]
+    enable_5g_advanced: bool,
+
+    /// SBI/core network interface for NF interception
+    #[arg(long, default_value = "sbi0")]
+    sbi_iface: String,
+
+    /// SDR interface for radio-layer attacks
+    #[arg(long, default_value = "sdr0")]
+    sdr_iface: String,
 }
 
 #[tokio::main]
@@ -80,6 +92,7 @@ async fn main() -> Result<()> {
 
     let enable_telecom = cli.all || cli.enable_telecom;
     let enable_advanced = cli.all || cli.enable_telecom_advanced;
+    let enable_5g = cli.all || cli.enable_5g_advanced;
 
     // ── Features 89-100: Telecom Interception ────────────────────────────────
     if enable_telecom {
@@ -211,6 +224,86 @@ async fn main() -> Result<()> {
                 let tc: &mut SchedClassifier = prog.try_into()?;
                 tc.load()?;
                 info!("{} loaded", desc);
+            }
+        }
+    }
+
+    // ── Features 109-120: 5G Advanced / RAN / SBI / Identity ──────────────────
+    if enable_5g {
+        let kprobes_5g = [
+            (
+                "shadow_pbch_sib_spoof",
+                "tty_write",
+                "F109: PBCH/SIB Broadcast Spoofing",
+            ),
+            (
+                "shadow_rrc_meas_manipulate",
+                "qmi_wwan_rx_fixup",
+                "F110: RRC Measurement Report Manipulation",
+            ),
+            (
+                "shadow_oauth2_theft",
+                "tcp_sendmsg",
+                "F114: OAuth2 Token Theft (NF-to-NF)",
+            ),
+            (
+                "shadow_mimo_fingerprint",
+                "qmi_wwan_rx_fixup",
+                "F116: MIMO Beamforming Fingerprinting",
+            ),
+            (
+                "shadow_aka_downgrade",
+                "tcp_sendmsg",
+                "F118: 5G-AKA Downgrade to EAP-AKA'",
+            ),
+            (
+                "shadow_suci_replay",
+                "tcp_sendmsg",
+                "F119: SUCI Replay Attack",
+            ),
+            (
+                "shadow_arpf_probe",
+                "tcp_sendmsg",
+                "F120: ARPF Key Extraction Probe",
+            ),
+        ];
+
+        for (name, attach_point, desc) in &kprobes_5g {
+            match bpf.program_mut(name) {
+                Some(prog) => {
+                    let kprobe: &mut KProbe = prog.try_into()?;
+                    kprobe.load()?;
+                    kprobe.attach(attach_point, 0)?;
+                    info!("{} enabled", desc);
+                }
+                None => warn!("{} ({}) not found, skipping", desc, name),
+            }
+        }
+
+        // XDP on SDR interface for jamming evasion
+        if let Some(prog) = bpf.program_mut("shadow_jamming_evasion") {
+            let xdp: &mut Xdp = prog.try_into()?;
+            xdp.load()?;
+            xdp.attach(&cli.sdr_iface, XdpFlags::default())?;
+            info!(
+                "F115: Jamming Detection Evasion enabled on {}",
+                cli.sdr_iface
+            );
+        }
+
+        // TC classifiers for SBI/RAN/sidelink exploitation
+        let tc_5g = [
+            ("shadow_handover_hijack", "F111: Handover Hijacking"),
+            ("shadow_sbi_exploit", "F112: HTTP/2 SBI Exploitation"),
+            ("shadow_nrf_abuse", "F113: NRF API Abuse"),
+            ("shadow_sidelink_exploit", "F117: Sidelink PC5/V2X Exploit"),
+        ];
+
+        for (name, desc) in &tc_5g {
+            if let Some(prog) = bpf.program_mut(name) {
+                let tc: &mut SchedClassifier = prog.try_into()?;
+                tc.load()?;
+                info!("{} loaded (attach to {} manually)", desc, cli.sbi_iface);
             }
         }
     }

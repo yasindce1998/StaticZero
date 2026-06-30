@@ -10,8 +10,9 @@ use std::collections::{HashMap as StdHashMap, HashSet, VecDeque};
 
 use common::{
     DefenseAlert, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER, ALERT_GTP_ANOMALY,
-    ALERT_IMSI_CATCHER, ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_RF_FINGERPRINT,
-    ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY,
+    ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY,
+    ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER,
+    ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY,
     ALERT_VOLTE_FRAUD,
 };
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,14 @@ pub fn format_alert_details(alert: &DefenseAlert) -> String {
         ALERT_SLICE_VIOLATION => format!("slice_id={}, violation={}", alert.context, detail_u64),
         ALERT_ROAMING_ANOMALY => format!("plmn={}, anomaly={}", alert.context, detail_u64),
         ALERT_RF_FINGERPRINT => format!("cell_id={}, deviation={}", alert.context, detail_u64),
+        ALERT_SBI_ANOMALY => format!("nf_type={}, streams={}", alert.context, detail_u64),
+        ALERT_HANDOVER_INTEGRITY => {
+            format!("source_pci={}, target_pci={}", alert.context, detail_u64)
+        }
+        ALERT_RAN_SHARING_LEAK => {
+            format!("plmn={}, violation_count={}", alert.context, detail_u64)
+        }
+        ALERT_SIGNALING_STORM => format!("msg_type={}, rate={}", alert.context, detail_u64),
         _ => format!("context={}", alert.context),
     }
 }
@@ -71,6 +80,7 @@ pub enum TelecomLayer {
     Transport,
     Signaling,
     Core,
+    Sbi,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +106,11 @@ pub enum ThreatCategory {
     ServiceDenial,
     SliceEscape,
     RoamingExploit,
+    SbiCompromise,
+    HandoverHijack,
+    RanSharingBreach,
+    SignalingStorm,
+    IdentityExposure,
 }
 
 #[derive(Debug, Clone)]
@@ -204,11 +219,15 @@ impl TelecomCorrelationEngine {
         let imsi_hash = alert.context;
 
         let layer = match alert.alert_type {
-            ALERT_ROGUE_TOWER | ALERT_CELL_ANOMALY | ALERT_RF_FINGERPRINT => TelecomLayer::Radio,
-            ALERT_DOWNGRADE_ATTACK | ALERT_NAS_REPLAY | ALERT_IMSI_CATCHER => TelecomLayer::Nas,
+            ALERT_ROGUE_TOWER | ALERT_CELL_ANOMALY | ALERT_RF_FINGERPRINT
+            | ALERT_HANDOVER_INTEGRITY => TelecomLayer::Radio,
+            ALERT_DOWNGRADE_ATTACK | ALERT_NAS_REPLAY | ALERT_IMSI_CATCHER
+            | ALERT_SIGNALING_STORM => TelecomLayer::Nas,
             ALERT_GTP_ANOMALY | ALERT_ROAMING_ANOMALY => TelecomLayer::Transport,
             ALERT_SS7_ANOMALY | ALERT_VOLTE_FRAUD => TelecomLayer::Signaling,
-            ALERT_MODEM_TAMPER | ALERT_ESIM_TAMPER | ALERT_SLICE_VIOLATION => TelecomLayer::Core,
+            ALERT_MODEM_TAMPER | ALERT_ESIM_TAMPER | ALERT_SLICE_VIOLATION
+            | ALERT_RAN_SHARING_LEAK => TelecomLayer::Core,
+            ALERT_SBI_ANOMALY => TelecomLayer::Sbi,
             _ => TelecomLayer::Core,
         };
 
@@ -323,6 +342,85 @@ impl TelecomCorrelationEngine {
             }
         }
 
+        // SBI compromise: SBI anomaly + NAS layer activity in same cell
+        if layers.contains(&TelecomLayer::Sbi) && layers.contains(&TelecomLayer::Nas) {
+            let threat = self.build_threat(
+                ThreatCategory::SbiCompromise,
+                0.90,
+                4,
+                vec![TelecomLayer::Sbi, TelecomLayer::Nas],
+                window.events.iter().cloned().collect(),
+                "SBI exploitation with NAS-layer manipulation — NF compromise likely",
+            );
+            return Some(threat);
+        }
+
+        // Handover hijack: multiple Radio events including handover integrity alert
+        if layers.contains(&TelecomLayer::Radio) {
+            let radio_events = window.events_in_layer(TelecomLayer::Radio);
+            let has_handover = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_HANDOVER_INTEGRITY);
+            let has_rogue = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_ROGUE_TOWER || e.event_type == ALERT_RF_FINGERPRINT);
+
+            if has_handover && has_rogue {
+                let threat = self.build_threat(
+                    ThreatCategory::HandoverHijack,
+                    0.87,
+                    4,
+                    vec![TelecomLayer::Radio],
+                    window.events.iter().cloned().collect(),
+                    "Forced handover to rogue cell — handover hijack detected",
+                );
+                return Some(threat);
+            }
+        }
+
+        // RAN sharing breach: cross-PLMN leak + slice violation in Core layer
+        if layers.contains(&TelecomLayer::Core) {
+            let core_events = window.events_in_layer(TelecomLayer::Core);
+            let has_ran_sharing = core_events
+                .iter()
+                .any(|e| e.event_type == ALERT_RAN_SHARING_LEAK);
+            let has_slice = core_events
+                .iter()
+                .any(|e| e.event_type == ALERT_SLICE_VIOLATION);
+
+            if has_ran_sharing && has_slice {
+                let threat = self.build_threat(
+                    ThreatCategory::RanSharingBreach,
+                    0.82,
+                    3,
+                    vec![TelecomLayer::Core],
+                    window.events.iter().cloned().collect(),
+                    "Cross-PLMN data leakage with slice isolation failure — RAN sharing breach",
+                );
+                return Some(threat);
+            }
+        }
+
+        // Signaling storm: NAS storm + any other layer anomaly
+        if layers.contains(&TelecomLayer::Nas) && layers.len() >= 2 {
+            let nas_events = window.events_in_layer(TelecomLayer::Nas);
+            let has_storm = nas_events
+                .iter()
+                .any(|e| e.event_type == ALERT_SIGNALING_STORM);
+
+            if has_storm {
+                let threat = self.build_threat(
+                    ThreatCategory::SignalingStorm,
+                    0.75,
+                    3,
+                    layers.into_iter().collect(),
+                    window.events.iter().cloned().collect(),
+                    "Signaling storm with correlated multi-layer anomalies — volumetric DoS",
+                );
+                return Some(threat);
+            }
+        }
+
         None
     }
 
@@ -374,6 +472,19 @@ impl TelecomCorrelationEngine {
                 );
                 return Some(threat);
             }
+        }
+
+        // Identity exposure: NAS + SBI events targeting same subscriber
+        if layers.contains(&TelecomLayer::Nas) && layers.contains(&TelecomLayer::Sbi) {
+            let threat = self.build_threat(
+                ThreatCategory::IdentityExposure,
+                0.85,
+                4,
+                vec![TelecomLayer::Nas, TelecomLayer::Sbi],
+                window.events.iter().cloned().collect(),
+                "AKA/NAS anomaly + SBI token reuse targeting same subscriber — identity exposure",
+            );
+            return Some(threat);
         }
 
         None

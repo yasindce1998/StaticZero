@@ -49,6 +49,10 @@ struct Cli {
     #[arg(long)]
     telecom_advanced: bool,
 
+    /// Enable 5G core defense modules (29-32)
+    #[arg(long)]
+    telecom_5g_defense: bool,
+
     /// Enable all detection modules
     #[arg(long)]
     all: bool,
@@ -174,6 +178,7 @@ async fn main() -> Result<()> {
 
     let enable_telecom = cli.all || cli.telecom_detect;
     let enable_advanced = cli.all || cli.telecom_advanced;
+    let enable_5g_defense = cli.all || cli.telecom_5g_defense;
 
     if enable_telecom {
         let probes = [
@@ -228,6 +233,36 @@ async fn main() -> Result<()> {
         ];
 
         for (name, desc) in &probes {
+            match bpf.program_mut(name) {
+                Some(prog) => {
+                    let kprobe: &mut KProbe = prog.try_into()?;
+                    kprobe.load()?;
+                    kprobe.attach(name.trim_start_matches("detect_"), 0)?;
+                    info!("{} enabled", desc);
+                }
+                None => warn!("{} not found in eBPF object, skipping", name),
+            }
+        }
+    }
+
+    if enable_5g_defense {
+        let probes_5g = [
+            ("detect_sbi_anomaly", "Module 29: SBI Anomaly Detection"),
+            (
+                "detect_handover_integrity",
+                "Module 30: Handover Integrity Monitoring",
+            ),
+            (
+                "detect_ran_sharing_leak",
+                "Module 31: RAN Sharing Isolation",
+            ),
+            (
+                "detect_signaling_storm",
+                "Module 32: Signaling Storm Detection",
+            ),
+        ];
+
+        for (name, desc) in &probes_5g {
             match bpf.program_mut(name) {
                 Some(prog) => {
                     let kprobe: &mut KProbe = prog.try_into()?;

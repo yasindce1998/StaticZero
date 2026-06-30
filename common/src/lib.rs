@@ -72,6 +72,23 @@ pub const EVENT_ROAMING_IPX_PIVOT: u32 = 177;
 pub const EVENT_GRX_LATERAL: u32 = 178;
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Telecom Event Constants — Offense 5G Advanced (Features 109-120)
+// ══════════════════════════════════════════════════════════════════════════════
+
+pub const EVENT_PBCH_SIB_SPOOF: u32 = 179;
+pub const EVENT_RRC_MEAS_MANIPULATE: u32 = 180;
+pub const EVENT_HANDOVER_HIJACK: u32 = 181;
+pub const EVENT_SBI_EXPLOIT: u32 = 182;
+pub const EVENT_NRF_ABUSE: u32 = 183;
+pub const EVENT_OAUTH2_THEFT: u32 = 184;
+pub const EVENT_JAMMING_EVASION: u32 = 185;
+pub const EVENT_MIMO_FINGERPRINT: u32 = 186;
+pub const EVENT_SIDELINK_EXPLOIT: u32 = 187;
+pub const EVENT_AKA_DOWNGRADE: u32 = 188;
+pub const EVENT_SUCI_REPLAY: u32 = 189;
+pub const EVENT_ARPF_PROBE: u32 = 190;
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Telecom Defense Alert Constants
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -88,6 +105,10 @@ pub const ALERT_ESIM_TAMPER: u32 = 28;
 pub const ALERT_SLICE_VIOLATION: u32 = 29;
 pub const ALERT_ROAMING_ANOMALY: u32 = 30;
 pub const ALERT_RF_FINGERPRINT: u32 = 31;
+pub const ALERT_SBI_ANOMALY: u32 = 32;
+pub const ALERT_HANDOVER_INTEGRITY: u32 = 33;
+pub const ALERT_RAN_SHARING_LEAK: u32 = 34;
+pub const ALERT_SIGNALING_STORM: u32 = 35;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Telecom Structs (eBPF map values)
@@ -288,6 +309,163 @@ pub struct TelecomCorrelationEvent {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// 5G Advanced / SBI / RAN Structs (Features 109-120, Modules 29-32)
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SbiSessionState {
+    pub stream_id: u32,
+    pub method_hash: u32,
+    pub path_hash: u64,
+    pub nf_src: u32,
+    pub nf_dst: u32,
+    pub token_hash: u64,
+    pub timestamp_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct NrfRegistration {
+    pub nf_instance_id: u64,
+    pub nf_type: u32,
+    pub status: u32,
+    pub service_hash: u64,
+    pub token_expiry_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AkaAuthState {
+    pub suci_hash: u64,
+    pub rand: [u8; 16],
+    pub autn: [u8; 16],
+    pub res_star: [u8; 16],
+    pub kausf_hash: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SidelinkCtx {
+    pub src_l2_id: u32,
+    pub dst_l2_id: u32,
+    pub freq: u32,
+    pub sl_rnti: u16,
+    pub cast_type: u16,
+    pub resource_pool: u32,
+    pub _pad: u32,
+    pub timestamp_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct HandoverCtx {
+    pub source_pci: u16,
+    pub target_pci: u16,
+    pub earfcn: u32,
+    pub meas_rsrp: i16,
+    pub meas_rsrq: i16,
+    pub event_type: u32,
+    pub timestamp_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MimoBeamState {
+    pub beam_id: u32,
+    pub ssb_index: u8,
+    pub num_layers: u8,
+    pub _pad: [u8; 2],
+    pub precoder_hash: u64,
+    pub csi_report_hash: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SbiBaseline {
+    pub nf_type: u32,
+    pub expected_services: u32,
+    pub max_streams: u32,
+    pub _pad: u32,
+    pub token_fingerprint: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct HandoverBaseline {
+    pub source_pci: u16,
+    pub target_pci: u16,
+    pub min_rsrp: i16,
+    pub max_rsrp: i16,
+    pub expected_earfcn: u32,
+    pub max_rate_per_min: u32,
+    pub _pad: u32,
+    pub _pad2: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct RanSharingState {
+    pub plmn_id: u32,
+    pub slice_id: u32,
+    pub ue_count: u32,
+    pub _pad: u32,
+    pub isolation_violations: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SignalingCounter {
+    pub attach_count: u32,
+    pub detach_count: u32,
+    pub tau_count: u32,
+    pub service_req_count: u32,
+    pub window_start_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct PfcpSessionState {
+    pub seid_local: u64,
+    pub seid_remote: u64,
+    pub node_ip: u32,
+    pub _pad: u32,
+    pub pdr_count: u32,
+    pub far_count: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct NgapContext {
+    pub amf_ue_id: u64,
+    pub ran_ue_id: u32,
+    pub procedure_code: u32,
+    pub criticality: u32,
+    pub _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct XnApContext {
+    pub source_gnb: u32,
+    pub target_gnb: u32,
+    pub old_ue_xnap_id: u32,
+    pub new_ue_xnap_id: u32,
+    pub sn_status_hash: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct IqSampleMeta {
+    pub center_freq_hz: u64,
+    pub sample_rate_hz: u32,
+    pub gain_db: u16,
+    pub bits_per_sample: u8,
+    pub _pad: u8,
+    pub timestamp_ns: u64,
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Pod trait — required for eBPF map value types
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -314,3 +492,17 @@ unsafe impl Pod for SuplSpoofState {}
 unsafe impl Pod for RoamingState {}
 unsafe impl Pod for RfFingerprint {}
 unsafe impl Pod for TelecomCorrelationEvent {}
+unsafe impl Pod for SbiSessionState {}
+unsafe impl Pod for NrfRegistration {}
+unsafe impl Pod for AkaAuthState {}
+unsafe impl Pod for SidelinkCtx {}
+unsafe impl Pod for HandoverCtx {}
+unsafe impl Pod for MimoBeamState {}
+unsafe impl Pod for SbiBaseline {}
+unsafe impl Pod for HandoverBaseline {}
+unsafe impl Pod for RanSharingState {}
+unsafe impl Pod for SignalingCounter {}
+unsafe impl Pod for PfcpSessionState {}
+unsafe impl Pod for NgapContext {}
+unsafe impl Pod for XnApContext {}
+unsafe impl Pod for IqSampleMeta {}

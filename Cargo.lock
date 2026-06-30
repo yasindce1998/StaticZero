@@ -193,6 +193,7 @@ dependencies = [
  "log",
  "object 0.32.2",
  "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

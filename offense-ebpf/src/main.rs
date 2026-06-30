@@ -5,6 +5,7 @@
 mod maps;
 mod telecom;
 mod telecom_advanced;
+mod telecom_5g;
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {

@@ -9,10 +9,12 @@ use aya_ebpf::{
     programs::ProbeContext,
 };
 use common::{
-    CellBaseline, CellInfo, DefenseAlert, RfFingerprint, ALERT_CELL_ANOMALY,
-    ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER, ALERT_GTP_ANOMALY, ALERT_IMSI_CATCHER,
-    ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY,
-    ALERT_ROGUE_TOWER, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_VOLTE_FRAUD,
+    CellBaseline, CellInfo, DefenseAlert, HandoverBaseline, RanSharingState, RfFingerprint,
+    SbiBaseline, SignalingCounter, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER,
+    ALERT_GTP_ANOMALY, ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_MODEM_TAMPER,
+    ALERT_NAS_REPLAY, ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY,
+    ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION,
+    ALERT_SS7_ANOMALY, ALERT_VOLTE_FRAUD,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -58,6 +60,28 @@ static ROAMING_BASELINE: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
 
 #[map]
 static RF_FINGERPRINT_BASELINE: HashMap<u32, RfFingerprint> = HashMap::with_max_entries(64, 0);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 5G ADVANCED DEFENSE MAPS (Modules 29-32)
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[map]
+static SBI_BASELINE_MAP: HashMap<u32, SbiBaseline> = HashMap::with_max_entries(32, 0);
+
+#[map]
+static SBI_STREAM_COUNTER: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static HANDOVER_BASELINE_MAP: HashMap<u32, HandoverBaseline> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static HANDOVER_RATE_MAP: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static RAN_SHARING_MAP: HashMap<u32, RanSharingState> = HashMap::with_max_entries(32, 0);
+
+#[map]
+static SIGNALING_COUNTER_MAP: HashMap<u32, SignalingCounter> = HashMap::with_max_entries(128, 0);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODULE 16: Rogue Tower Detection (Alert 19)
@@ -775,6 +799,365 @@ fn try_detect_rf_fingerprint(ctx: &ProbeContext) -> Result<u32, i64> {
                 let mut d = [0u8; 16];
                 d[0..4].copy_from_slice(&iq_variance.to_le_bytes());
                 d[4..8].copy_from_slice(&(freq_offset as u32).to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 29: SBI Anomaly Detection (Alert 32)
+// Inspects HTTP/2 frames between 5G core NFs; flags unauthorized
+// service discovery, token reuse, unknown NF types, excessive streams
+// Hook: kprobe on tcp_sendmsg (NF SBI ports)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const SBI_MAX_STREAMS_PER_NF: u32 = 100;
+
+#[kprobe]
+pub fn detect_sbi_anomaly(ctx: ProbeContext) -> u32 {
+    try_detect_sbi_anomaly(&ctx).unwrap_or_default()
+}
+
+fn try_detect_sbi_anomaly(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid_tgid = bpf_get_current_pid_tgid();
+    let pid = (pid_tgid >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let nf_type: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let stream_id: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let token_hash: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    // Check NF type against baseline
+    if let Some(baseline) = unsafe { SBI_BASELINE_MAP.get(&nf_type) } {
+        // Check stream count
+        let count = unsafe { SBI_STREAM_COUNTER.get(&nf_type) }
+            .copied()
+            .unwrap_or(0);
+        let new_count = count + 1;
+        let _ = SBI_STREAM_COUNTER.insert(&nf_type, &new_count, 0);
+
+        if new_count > SBI_MAX_STREAMS_PER_NF || new_count > baseline.max_streams {
+            let alert = DefenseAlert {
+                alert_type: ALERT_SBI_ANOMALY,
+                severity: 3,
+                pid,
+                _pad: 0,
+                timestamp_ns: now,
+                context: nf_type as u64,
+                details: {
+                    let mut d = [0u8; 16];
+                    d[0..4].copy_from_slice(&nf_type.to_le_bytes());
+                    d[4..8].copy_from_slice(&new_count.to_le_bytes());
+                    d[8..12].copy_from_slice(&stream_id.to_le_bytes());
+                    d
+                },
+            };
+            let _ = DEFENSE_ALERTS.output(&alert, 0);
+        }
+
+        // Token fingerprint mismatch = potential token theft/reuse
+        let token_fp = baseline.token_fingerprint as u32;
+        if token_hash != 0 && token_fp != 0 && token_hash != token_fp {
+            let alert = DefenseAlert {
+                alert_type: ALERT_SBI_ANOMALY,
+                severity: 4,
+                pid,
+                _pad: 0,
+                timestamp_ns: now,
+                context: nf_type as u64,
+                details: {
+                    let mut d = [0u8; 16];
+                    d[0..4].copy_from_slice(&token_hash.to_le_bytes());
+                    d[4..8].copy_from_slice(&token_fp.to_le_bytes());
+                    d[8..12].copy_from_slice(&nf_type.to_le_bytes());
+                    d
+                },
+            };
+            let _ = DEFENSE_ALERTS.output(&alert, 0);
+        }
+    } else {
+        // Unknown NF type communicating on SBI -- always suspicious
+        let alert = DefenseAlert {
+            alert_type: ALERT_SBI_ANOMALY,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: nf_type as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&nf_type.to_le_bytes());
+                d[4..8].copy_from_slice(&stream_id.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 30: Handover Integrity Monitoring (Alert 33)
+// Validates measurement reports against known cell topology;
+// flags implausible RSRP/PCI combinations and excessive handover rates
+// Hook: kprobe on RRC measurement report processing
+// ══════════════════════════════════════════════════════════════════════════════
+
+const HANDOVER_RATE_THRESHOLD: u32 = 10;
+
+#[kprobe]
+pub fn detect_handover_integrity(ctx: ProbeContext) -> u32 {
+    try_detect_handover_integrity(&ctx).unwrap_or_default()
+}
+
+fn try_detect_handover_integrity(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid_tgid = bpf_get_current_pid_tgid();
+    let pid = (pid_tgid >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let source_pci: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let target_pci: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let rsrp: i32 = unsafe { ctx.arg::<u32>(2).unwrap_or(0) as i32 };
+
+    // Rate limiting: count handovers per source cell
+    let rate = unsafe { HANDOVER_RATE_MAP.get(&source_pci) }
+        .copied()
+        .unwrap_or(0);
+    let new_rate = rate + 1;
+    let _ = HANDOVER_RATE_MAP.insert(&source_pci, &new_rate, 0);
+
+    if new_rate > HANDOVER_RATE_THRESHOLD {
+        let alert = DefenseAlert {
+            alert_type: ALERT_HANDOVER_INTEGRITY,
+            severity: 3,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: source_pci as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&source_pci.to_le_bytes());
+                d[4..8].copy_from_slice(&target_pci.to_le_bytes());
+                d[8..12].copy_from_slice(&new_rate.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    // Validate against topology baseline
+    if let Some(baseline) = unsafe { HANDOVER_BASELINE_MAP.get(&source_pci) } {
+        let rsrp_i16 = rsrp as i16;
+
+        // Check if target PCI is an expected neighbor
+        if target_pci != baseline.target_pci as u32 {
+            let alert = DefenseAlert {
+                alert_type: ALERT_HANDOVER_INTEGRITY,
+                severity: 4,
+                pid,
+                _pad: 0,
+                timestamp_ns: now,
+                context: ((source_pci as u64) << 32) | target_pci as u64,
+                details: {
+                    let mut d = [0u8; 16];
+                    d[0..4].copy_from_slice(&source_pci.to_le_bytes());
+                    d[4..8].copy_from_slice(&target_pci.to_le_bytes());
+                    d[8..12].copy_from_slice(&(rsrp as u32).to_le_bytes());
+                    d
+                },
+            };
+            let _ = DEFENSE_ALERTS.output(&alert, 0);
+        }
+
+        // Check RSRP plausibility
+        if rsrp_i16 < baseline.min_rsrp || rsrp_i16 > baseline.max_rsrp {
+            let alert = DefenseAlert {
+                alert_type: ALERT_HANDOVER_INTEGRITY,
+                severity: 3,
+                pid,
+                _pad: 0,
+                timestamp_ns: now,
+                context: source_pci as u64,
+                details: {
+                    let mut d = [0u8; 16];
+                    d[0..4].copy_from_slice(&(rsrp as u32).to_le_bytes());
+                    d[4..6].copy_from_slice(&baseline.min_rsrp.to_le_bytes());
+                    d[6..8].copy_from_slice(&baseline.max_rsrp.to_le_bytes());
+                    d[8..12].copy_from_slice(&target_pci.to_le_bytes());
+                    d
+                },
+            };
+            let _ = DEFENSE_ALERTS.output(&alert, 0);
+        }
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 31: RAN Sharing Isolation Detection (Alert 34)
+// Detects cross-PLMN leakage in MOCN/MORAN deployments;
+// monitors UE-to-PLMN mappings for isolation violations
+// Hook: kprobe on PLMN selection / RRC connection setup
+// ══════════════════════════════════════════════════════════════════════════════
+
+const RAN_SHARING_ISOLATION_THRESHOLD: u32 = 3;
+
+#[kprobe]
+pub fn detect_ran_sharing_leak(ctx: ProbeContext) -> u32 {
+    try_detect_ran_sharing_leak(&ctx).unwrap_or_default()
+}
+
+fn try_detect_ran_sharing_leak(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid_tgid = bpf_get_current_pid_tgid();
+    let pid = (pid_tgid >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let plmn_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let slice_id: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let ue_context_hash: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    if let Some(state) = unsafe { RAN_SHARING_MAP.get(&plmn_id) } {
+        // Check if this UE context belongs to a different PLMN's slice
+        if state.slice_id != 0 && slice_id != 0 && state.slice_id != slice_id {
+            let violations = (state.isolation_violations as u32) + 1;
+
+            // Update violation count
+            let new_state = RanSharingState {
+                plmn_id,
+                slice_id: state.slice_id,
+                ue_count: state.ue_count,
+                _pad: 0,
+                isolation_violations: violations as u64,
+            };
+            let _ = RAN_SHARING_MAP.insert(&plmn_id, &new_state, 0);
+
+            if violations >= RAN_SHARING_ISOLATION_THRESHOLD {
+                let alert = DefenseAlert {
+                    alert_type: ALERT_RAN_SHARING_LEAK,
+                    severity: 4,
+                    pid,
+                    _pad: 0,
+                    timestamp_ns: now,
+                    context: plmn_id as u64,
+                    details: {
+                        let mut d = [0u8; 16];
+                        d[0..4].copy_from_slice(&plmn_id.to_le_bytes());
+                        d[4..8].copy_from_slice(&violations.to_le_bytes());
+                        d[8..12].copy_from_slice(&slice_id.to_le_bytes());
+                        d[12..16].copy_from_slice(&ue_context_hash.to_le_bytes());
+                        d
+                    },
+                };
+                let _ = DEFENSE_ALERTS.output(&alert, 0);
+            }
+        }
+    } else {
+        // First time seeing this PLMN -- register baseline
+        let new_state = RanSharingState {
+            plmn_id,
+            slice_id,
+            ue_count: 1,
+            _pad: 0,
+            isolation_violations: 0,
+        };
+        let _ = RAN_SHARING_MAP.insert(&plmn_id, &new_state, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 32: Signaling Storm Detection (Alert 35)
+// Volumetric analysis of attach/detach/TAU/service-request floods;
+// fires when any message type exceeds threshold per time window
+// Hook: kprobe on NAS/NGAP message processing
+// ══════════════════════════════════════════════════════════════════════════════
+
+const SIGNALING_STORM_ATTACH_THRESHOLD: u32 = 50;
+const SIGNALING_STORM_TAU_THRESHOLD: u32 = 100;
+const SIGNALING_WINDOW_NS: u64 = 10_000_000_000; // 10 seconds
+
+#[kprobe]
+pub fn detect_signaling_storm(ctx: ProbeContext) -> u32 {
+    try_detect_signaling_storm(&ctx).unwrap_or_default()
+}
+
+fn try_detect_signaling_storm(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid_tgid = bpf_get_current_pid_tgid();
+    let pid = (pid_tgid >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let msg_type: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let cell_id: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+
+    let counter = unsafe { SIGNALING_COUNTER_MAP.get(&cell_id) }.copied();
+
+    let mut counters = match counter {
+        Some(c) => {
+            // Reset window if expired
+            if now.saturating_sub(c.window_start_ns) > SIGNALING_WINDOW_NS {
+                SignalingCounter {
+                    attach_count: 0,
+                    detach_count: 0,
+                    tau_count: 0,
+                    service_req_count: 0,
+                    window_start_ns: now,
+                }
+            } else {
+                c
+            }
+        }
+        None => SignalingCounter {
+            attach_count: 0,
+            detach_count: 0,
+            tau_count: 0,
+            service_req_count: 0,
+            window_start_ns: now,
+        },
+    };
+
+    // NAS message types: 0x41=Attach, 0x45=Detach, 0x48=TAU, 0x4C=ServiceReq
+    match msg_type {
+        0x41 => counters.attach_count += 1,
+        0x45 => counters.detach_count += 1,
+        0x48 => counters.tau_count += 1,
+        0x4C => counters.service_req_count += 1,
+        _ => {}
+    }
+
+    let _ = SIGNALING_COUNTER_MAP.insert(&cell_id, &counters, 0);
+
+    // Check thresholds
+    let storm_detected = counters.attach_count >= SIGNALING_STORM_ATTACH_THRESHOLD
+        || counters.detach_count >= SIGNALING_STORM_ATTACH_THRESHOLD
+        || counters.tau_count >= SIGNALING_STORM_TAU_THRESHOLD
+        || counters.service_req_count >= SIGNALING_STORM_TAU_THRESHOLD;
+
+    if storm_detected {
+        let total_rate = counters.attach_count
+            + counters.detach_count
+            + counters.tau_count
+            + counters.service_req_count;
+
+        let alert = DefenseAlert {
+            alert_type: ALERT_SIGNALING_STORM,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: cell_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&msg_type.to_le_bytes());
+                d[4..8].copy_from_slice(&total_rate.to_le_bytes());
+                d[8..12].copy_from_slice(&counters.attach_count.to_le_bytes());
+                d[12..16].copy_from_slice(&counters.tau_count.to_le_bytes());
                 d
             },
         };

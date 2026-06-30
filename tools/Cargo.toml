@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "SDR integration, modem firmware analysis, and lab automation tools for StaticZero"
 
+[lib]
+name = "staticzero_tools"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sdr-bridge"
 path = "src/sdr_integration.rs"

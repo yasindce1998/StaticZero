@@ -139,6 +139,9 @@ pub enum FrameType {
     PagingMessage,
     MeasurementReport,
     HandoverCommand,
+    PbchMib,
+    Sib1Decoded,
+    RachPreamble,
 }
 
 pub struct SdrBridge {
@@ -278,9 +281,96 @@ impl SdrBridge {
         })
     }
 
+    pub fn start_iq_capture(&self, config: IqCaptureConfig) -> Result<IqSampleStream> {
+        info!(
+            "Starting IQ capture: freq={}MHz, rate={}Msps, gain={}dB, bits={}",
+            config.center_freq_hz / 1_000_000,
+            config.sample_rate_hz / 1_000_000,
+            config.gain_db,
+            config.bits_per_sample,
+        );
+
+        *self.running.lock().unwrap() = true;
+
+        let (tx, rx) = mpsc::channel::<Vec<u8>>(config.buffer_size / 4096);
+
+        // In production: configure SDR with IQ params → start async RX stream → push chunks to tx
+        Ok(IqSampleStream {
+            config,
+            receiver: rx,
+            _sender: tx,
+            total_samples: 0,
+        })
+    }
+
+    pub fn feed_iq_to_defense(&self, samples: &[u8], meta: IqSampleMeta) -> Result<()> {
+        info!(
+            "Feeding {} bytes IQ data to defense engine (freq={}MHz, ts={})",
+            samples.len(),
+            meta.center_freq_hz / 1_000_000,
+            meta.timestamp_ns,
+        );
+
+        // In production: connect to defense engine TCP port and stream
+        // IQ metadata header + raw samples for real-time analysis
+        // Defense modules use this for:
+        //   - Jamming detection (spectral anomaly in IQ domain)
+        //   - RF fingerprinting (IQ imbalance, phase noise extraction)
+        //   - Rogue cell identification (PSS/SSS correlation on raw IQ)
+        Ok(())
+    }
+
     pub fn stop(&self) {
         *self.running.lock().unwrap() = false;
         info!("SDR capture stopped");
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IqCaptureConfig {
+    pub center_freq_hz: u64,
+    pub sample_rate_hz: u32,
+    pub gain_db: u16,
+    pub bits_per_sample: u8,
+    pub buffer_size: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct IqSampleMeta {
+    pub center_freq_hz: u64,
+    pub sample_rate_hz: u32,
+    pub gain_db: u16,
+    pub bits_per_sample: u8,
+    pub timestamp_ns: u64,
+}
+
+pub struct IqSampleStream {
+    pub config: IqCaptureConfig,
+    receiver: mpsc::Receiver<Vec<u8>>,
+    _sender: mpsc::Sender<Vec<u8>>,
+    total_samples: u64,
+}
+
+impl IqSampleStream {
+    pub async fn next_chunk(&mut self) -> Option<Vec<u8>> {
+        let chunk = self.receiver.recv().await?;
+        let samples_in_chunk = chunk.len() as u64 / (self.config.bits_per_sample as u64 / 4);
+        self.total_samples += samples_in_chunk;
+        Some(chunk)
+    }
+
+    pub fn total_samples(&self) -> u64 {
+        self.total_samples
+    }
+
+    pub fn meta(&self) -> IqSampleMeta {
+        IqSampleMeta {
+            center_freq_hz: self.config.center_freq_hz,
+            sample_rate_hz: self.config.sample_rate_hz,
+            gain_db: self.config.gain_db,
+            bits_per_sample: self.config.bits_per_sample,
+            timestamp_ns: 0,
+        }
     }
 }
 

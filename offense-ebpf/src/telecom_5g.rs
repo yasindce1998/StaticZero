@@ -5,10 +5,10 @@ use aya_ebpf::{
     programs::{ProbeContext, TcContext, XdpContext},
 };
 use common::{
-    EventHeader, EVENT_AKA_DOWNGRADE, EVENT_ARPF_PROBE, EVENT_HANDOVER_HIJACK,
-    EVENT_JAMMING_EVASION, EVENT_MIMO_FINGERPRINT, EVENT_NRF_ABUSE, EVENT_OAUTH2_THEFT,
-    EVENT_PBCH_SIB_SPOOF, EVENT_RRC_MEAS_MANIPULATE, EVENT_SBI_EXPLOIT, EVENT_SIDELINK_EXPLOIT,
-    EVENT_SUCI_REPLAY, HandoverCtx, MimoBeamState, SbiSessionState,
+    EventHeader, HandoverCtx, MimoBeamState, SbiSessionState, EVENT_AKA_DOWNGRADE,
+    EVENT_ARPF_PROBE, EVENT_HANDOVER_HIJACK, EVENT_JAMMING_EVASION, EVENT_MIMO_FINGERPRINT,
+    EVENT_NRF_ABUSE, EVENT_OAUTH2_THEFT, EVENT_PBCH_SIB_SPOOF, EVENT_RRC_MEAS_MANIPULATE,
+    EVENT_SBI_EXPLOIT, EVENT_SIDELINK_EXPLOIT, EVENT_SUCI_REPLAY,
 };
 
 use crate::maps::*;
@@ -53,7 +53,9 @@ fn try_pbch_sib_spoof(ctx: &ProbeContext) -> Result<u32, i64> {
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
 
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let first_bytes: [u8; 4] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 4]).map_err(|e| e as i64)? };
+    let first_bytes: [u8; 4] = unsafe {
+        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 4]).map_err(|e| e as i64)?
+    };
 
     // MIB (PBCH) magic: 0xA0 prefix for broadcast injection
     if first_bytes[0] == 0xA0 || first_bytes[0] == 0xB0 {
@@ -89,7 +91,9 @@ fn try_rrc_meas_manipulate(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 8] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)? };
+    let hdr: [u8; 8] = unsafe {
+        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)?
+    };
 
     // RRC MeasurementReport: message type 0x08 in UL-DCCH
     if hdr[0] == 0x08 || hdr[0] == 0x0A {
@@ -216,7 +220,11 @@ fn try_sbi_exploit(ctx: &TcContext) -> Result<i32, i64> {
     let tcp_hdr = ip_hdr + IP_HDR_LEN;
     let dst_port = unsafe { u16::from_be(*((tcp_hdr + 2) as *const u16)) };
 
-    if dst_port == SBI_HTTP2_PORT || dst_port == NRF_PORT || dst_port == AUSF_PORT || dst_port == UDM_PORT {
+    if dst_port == SBI_HTTP2_PORT
+        || dst_port == NRF_PORT
+        || dst_port == AUSF_PORT
+        || dst_port == UDM_PORT
+    {
         let payload = tcp_hdr + TCP_HDR_LEN;
         // HTTP/2 magic prefix: "PRI * HTTP/2.0" or frame header
         let frame_type = unsafe { *((payload + 3) as *const u8) };
@@ -331,15 +339,21 @@ fn try_oauth2_theft(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    let hdr: [u8; 16] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)? };
+    let hdr: [u8; 16] = unsafe {
+        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)?
+    };
 
     // Look for "Bearer " or "access_token" patterns in HTTP/2 headers
     if (hdr[0] == b'B' && hdr[1] == b'e' && hdr[2] == b'a' && hdr[3] == b'r')
         || (hdr[0] == b'a' && hdr[1] == b'c' && hdr[2] == b'c' && hdr[3] == b'e')
     {
         let token_hash = fnv_hash_u64(
-            u64::from_ne_bytes([hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5], hdr[6], hdr[7]]),
-            u64::from_ne_bytes([hdr[8], hdr[9], hdr[10], hdr[11], hdr[12], hdr[13], hdr[14], hdr[15]]),
+            u64::from_ne_bytes([
+                hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5], hdr[6], hdr[7],
+            ]),
+            u64::from_ne_bytes([
+                hdr[8], hdr[9], hdr[10], hdr[11], hdr[12], hdr[13], hdr[14], hdr[15],
+            ]),
         );
 
         let expiry = unsafe { bpf_ktime_get_ns() } + 3_600_000_000_000; // 1 hour
@@ -430,7 +444,9 @@ fn try_mimo_fingerprint(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 12] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 12]).map_err(|e| e as i64)? };
+    let hdr: [u8; 12] = unsafe {
+        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 12]).map_err(|e| e as i64)?
+    };
 
     // CSI report indicator byte
     if hdr[0] == 0xC5 || hdr[0] == 0xC6 {
@@ -445,7 +461,9 @@ fn try_mimo_fingerprint(ctx: &ProbeContext) -> Result<u32, i64> {
             _pad: [0; 2],
             precoder_hash: fnv_hash_u64(beam_id as u64, ssb_index as u64),
             csi_report_hash: fnv_hash_u64(
-                u64::from_ne_bytes([hdr[4], hdr[5], hdr[6], hdr[7], hdr[8], hdr[9], hdr[10], hdr[11]]),
+                u64::from_ne_bytes([
+                    hdr[4], hdr[5], hdr[6], hdr[7], hdr[8], hdr[9], hdr[10], hdr[11],
+                ]),
                 beam_id as u64,
             ),
         };
@@ -542,14 +560,20 @@ fn try_aka_downgrade(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    let hdr: [u8; 16] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)? };
+    let hdr: [u8; 16] = unsafe {
+        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)?
+    };
 
     // AUSF authentication response — EAP-AKA' indicator
     // NAS 5GMM: Authentication Request type=0x56, EAP method=50 (EAP-AKA')
     if hdr[0] == 0x56 || (hdr[0] == 0x01 && hdr[4] == 50) {
         let suci_hash = fnv_hash_u64(
-            u64::from_ne_bytes([hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5], hdr[6], hdr[7]]),
-            u64::from_ne_bytes([hdr[8], hdr[9], hdr[10], hdr[11], hdr[12], hdr[13], hdr[14], hdr[15]]),
+            u64::from_ne_bytes([
+                hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5], hdr[6], hdr[7],
+            ]),
+            u64::from_ne_bytes([
+                hdr[8], hdr[9], hdr[10], hdr[11], hdr[12], hdr[13], hdr[14], hdr[15],
+            ]),
         );
 
         let event = EventHeader {
@@ -589,13 +613,19 @@ fn try_suci_replay(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    let hdr: [u8; 16] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)? };
+    let hdr: [u8; 16] = unsafe {
+        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)?
+    };
 
     // SUCI structure: protection scheme 0x01 (ECIES profile A/B)
     if hdr[0] == 0x01 || hdr[0] == 0x02 {
         let suci_hash = fnv_hash_u64(
-            u64::from_ne_bytes([hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5], hdr[6], hdr[7]]),
-            u64::from_ne_bytes([hdr[8], hdr[9], hdr[10], hdr[11], hdr[12], hdr[13], hdr[14], hdr[15]]),
+            u64::from_ne_bytes([
+                hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5], hdr[6], hdr[7],
+            ]),
+            u64::from_ne_bytes([
+                hdr[8], hdr[9], hdr[10], hdr[11], hdr[12], hdr[13], hdr[14], hdr[15],
+            ]),
         );
 
         // Check if we already captured this SUCI — replay indicator
@@ -638,13 +668,17 @@ fn try_arpf_probe(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    let hdr: [u8; 16] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)? };
+    let hdr: [u8; 16] = unsafe {
+        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)?
+    };
 
     // UDM/ARPF interface: Nudm_UEAuthentication service
     // HTTP/2 path pattern for /nudm-ueau/v1/suci-0-*/security-information
     if hdr[0] == b'/' && hdr[1] == b'n' && hdr[2] == b'u' && hdr[3] == b'd' {
         let target_hash = fnv_hash_u64(
-            u64::from_ne_bytes([hdr[4], hdr[5], hdr[6], hdr[7], hdr[8], hdr[9], hdr[10], hdr[11]]),
+            u64::from_ne_bytes([
+                hdr[4], hdr[5], hdr[6], hdr[7], hdr[8], hdr[9], hdr[10], hdr[11],
+            ]),
             u64::from_ne_bytes([hdr[12], hdr[13], hdr[14], hdr[15], 0, 0, 0, 0]),
         );
 

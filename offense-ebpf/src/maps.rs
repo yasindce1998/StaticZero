@@ -4,9 +4,9 @@ use aya_ebpf::{
 };
 use common::{
     AkaAuthState, CellInfo, EsimProvisionCtx, FemtocellCtx, GtpTunnelState, HandoverCtx,
-    ImsSipSession, LiInterfaceState, MimoBeamState, NetworkSliceInfo, NrfRegistration, RoamingState,
-    RootkitConfig, RtpStreamState, SbiSessionState, SidelinkCtx, SignalingState, SuplSpoofState,
-    VoWiFiTunnelState,
+    ImsSipSession, LiInterfaceState, MimoBeamState, NetworkSliceInfo, NrfRegistration,
+    RoamingState, RootkitConfig, RtpStreamState, SbiSessionState, SidelinkCtx, SignalingState,
+    SuplSpoofState, VoWiFiTunnelState,
 };
 
 // ──────────────────────────────────────────────

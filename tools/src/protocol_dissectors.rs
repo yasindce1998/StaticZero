@@ -62,15 +62,42 @@ impl From<u8> for PfcpMessageType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PfcpIe {
-    FSeid { seid: u64, ipv4: Option<u32>, ipv6: Option<[u8; 16]> },
-    Pdr { rule_id: u16, precedence: u32, pdi: Option<PfcpPdi> },
-    Far { far_id: u32, apply_action: u8, forwarding_params: Option<ForwardingParams> },
-    Qer { qer_id: u32, gate_status: u8, mbr_ul: u64, mbr_dl: u64 },
-    Urr { urr_id: u32, measurement_method: u8, reporting_triggers: u32 },
-    NodeId { node_type: u8, value: Vec<u8> },
+    FSeid {
+        seid: u64,
+        ipv4: Option<u32>,
+        ipv6: Option<[u8; 16]>,
+    },
+    Pdr {
+        rule_id: u16,
+        precedence: u32,
+        pdi: Option<PfcpPdi>,
+    },
+    Far {
+        far_id: u32,
+        apply_action: u8,
+        forwarding_params: Option<ForwardingParams>,
+    },
+    Qer {
+        qer_id: u32,
+        gate_status: u8,
+        mbr_ul: u64,
+        mbr_dl: u64,
+    },
+    Urr {
+        urr_id: u32,
+        measurement_method: u8,
+        reporting_triggers: u32,
+    },
+    NodeId {
+        node_type: u8,
+        value: Vec<u8>,
+    },
     Cause(u8),
     RecoveryTimestamp(u32),
-    Unknown { ie_type: u16, data: Vec<u8> },
+    Unknown {
+        ie_type: u16,
+        data: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,8 +142,7 @@ pub fn parse_pfcp(data: &[u8]) -> Option<PfcpMessage> {
             return None;
         }
         let seid = u64::from_be_bytes([
-            data[4], data[5], data[6], data[7],
-            data[8], data[9], data[10], data[11],
+            data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
         ]);
         (Some(seid), 12)
     } else {
@@ -128,7 +154,10 @@ pub fn parse_pfcp(data: &[u8]) -> Option<PfcpMessage> {
     }
 
     let sequence_number = u32::from_be_bytes([
-        0, data[seq_offset], data[seq_offset + 1], data[seq_offset + 2],
+        0,
+        data[seq_offset],
+        data[seq_offset + 1],
+        data[seq_offset + 2],
     ]);
 
     let ie_start = seq_offset + 4;
@@ -172,7 +201,10 @@ fn parse_pfcp_ies(mut data: &[u8]) -> Vec<PfcpIe> {
             } else {
                 0
             }),
-            _ => PfcpIe::Unknown { ie_type, data: ie_data.to_vec() },
+            _ => PfcpIe::Unknown {
+                ie_type,
+                data: ie_data.to_vec(),
+            },
         };
 
         ies.push(ie);
@@ -184,55 +216,90 @@ fn parse_pfcp_ies(mut data: &[u8]) -> Vec<PfcpIe> {
 
 fn parse_pfcp_fseid(data: &[u8]) -> PfcpIe {
     if data.len() < 9 {
-        return PfcpIe::Unknown { ie_type: 57, data: data.to_vec() };
+        return PfcpIe::Unknown {
+            ie_type: 57,
+            data: data.to_vec(),
+        };
     }
     let flags = data[0];
     let seid = u64::from_be_bytes([
-        data[1], data[2], data[3], data[4],
-        data[5], data[6], data[7], data[8],
+        data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8],
     ]);
     let ipv4 = if (flags & 0x02) != 0 && data.len() >= 13 {
         Some(u32::from_be_bytes([data[9], data[10], data[11], data[12]]))
     } else {
         None
     };
-    PfcpIe::FSeid { seid, ipv4, ipv6: None }
+    PfcpIe::FSeid {
+        seid,
+        ipv4,
+        ipv6: None,
+    }
 }
 
 fn parse_pfcp_pdr(data: &[u8]) -> PfcpIe {
     if data.len() < 6 {
-        return PfcpIe::Unknown { ie_type: 1, data: data.to_vec() };
+        return PfcpIe::Unknown {
+            ie_type: 1,
+            data: data.to_vec(),
+        };
     }
     let rule_id = u16::from_be_bytes([data[0], data[1]]);
     let precedence = u32::from_be_bytes([data[2], data[3], data[4], data[5]]);
-    PfcpIe::Pdr { rule_id, precedence, pdi: None }
+    PfcpIe::Pdr {
+        rule_id,
+        precedence,
+        pdi: None,
+    }
 }
 
 fn parse_pfcp_far(data: &[u8]) -> PfcpIe {
     if data.len() < 5 {
-        return PfcpIe::Unknown { ie_type: 3, data: data.to_vec() };
+        return PfcpIe::Unknown {
+            ie_type: 3,
+            data: data.to_vec(),
+        };
     }
     let far_id = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
     let apply_action = data[4];
-    PfcpIe::Far { far_id, apply_action, forwarding_params: None }
+    PfcpIe::Far {
+        far_id,
+        apply_action,
+        forwarding_params: None,
+    }
 }
 
 fn parse_pfcp_qer(data: &[u8]) -> PfcpIe {
     if data.len() < 5 {
-        return PfcpIe::Unknown { ie_type: 54, data: data.to_vec() };
+        return PfcpIe::Unknown {
+            ie_type: 54,
+            data: data.to_vec(),
+        };
     }
     let qer_id = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
     let gate_status = data[4];
-    PfcpIe::Qer { qer_id, gate_status, mbr_ul: 0, mbr_dl: 0 }
+    PfcpIe::Qer {
+        qer_id,
+        gate_status,
+        mbr_ul: 0,
+        mbr_dl: 0,
+    }
 }
 
 fn parse_pfcp_urr(data: &[u8]) -> PfcpIe {
     if data.len() < 5 {
-        return PfcpIe::Unknown { ie_type: 55, data: data.to_vec() };
+        return PfcpIe::Unknown {
+            ie_type: 55,
+            data: data.to_vec(),
+        };
     }
     let urr_id = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
     let measurement_method = data[4];
-    PfcpIe::Urr { urr_id, measurement_method, reporting_triggers: 0 }
+    PfcpIe::Urr {
+        urr_id,
+        measurement_method,
+        reporting_triggers: 0,
+    }
 }
 
 // ── NGAP (N2 Interface — 3GPP TS 38.413) ──────────────────────────────────────
@@ -319,15 +386,33 @@ pub enum NgapIe {
     AmfUeNgapId(u64),
     RanUeNgapId(u32),
     NasPdu(Vec<u8>),
-    Cause { group: u8, value: u8 },
-    UserLocationInfo { nr_cgi: Option<NrCgi>, tai: Option<Tai> },
+    Cause {
+        group: u8,
+        value: u8,
+    },
+    UserLocationInfo {
+        nr_cgi: Option<NrCgi>,
+        tai: Option<Tai>,
+    },
     SourceToTargetContainer(Vec<u8>),
     TargetToSourceContainer(Vec<u8>),
     PduSessionResourceSetupList(Vec<PduSessionItem>),
     AllowedNssai(Vec<SNssai>),
-    Guami { plmn: [u8; 3], amf_region: u8, amf_set: u16, amf_pointer: u8 },
-    FiveGSTmsi { amf_set: u16, amf_pointer: u8, tmsi: u32 },
-    Unknown { id: u16, data: Vec<u8> },
+    Guami {
+        plmn: [u8; 3],
+        amf_region: u8,
+        amf_set: u16,
+        amf_pointer: u8,
+    },
+    FiveGSTmsi {
+        amf_set: u16,
+        amf_pointer: u8,
+        tmsi: u32,
+    },
+    Unknown {
+        id: u16,
+        data: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -411,13 +496,16 @@ fn parse_ngap_ies(mut data: &[u8]) -> (Option<u64>, Option<u32>, Vec<NgapIe>) {
             10 => {
                 if ie_data.len() >= 8 {
                     let id = u64::from_be_bytes([
-                        ie_data[0], ie_data[1], ie_data[2], ie_data[3],
-                        ie_data[4], ie_data[5], ie_data[6], ie_data[7],
+                        ie_data[0], ie_data[1], ie_data[2], ie_data[3], ie_data[4], ie_data[5],
+                        ie_data[6], ie_data[7],
                     ]);
                     amf_id = Some(id);
                     NgapIe::AmfUeNgapId(id)
                 } else {
-                    NgapIe::Unknown { id: ie_id, data: ie_data.to_vec() }
+                    NgapIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
                 }
             }
             85 => {
@@ -426,20 +514,32 @@ fn parse_ngap_ies(mut data: &[u8]) -> (Option<u64>, Option<u32>, Vec<NgapIe>) {
                     ran_id = Some(id);
                     NgapIe::RanUeNgapId(id)
                 } else {
-                    NgapIe::Unknown { id: ie_id, data: ie_data.to_vec() }
+                    NgapIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
                 }
             }
             38 => NgapIe::NasPdu(ie_data.to_vec()),
             15 => {
                 if ie_data.len() >= 2 {
-                    NgapIe::Cause { group: ie_data[0], value: ie_data[1] }
+                    NgapIe::Cause {
+                        group: ie_data[0],
+                        value: ie_data[1],
+                    }
                 } else {
-                    NgapIe::Unknown { id: ie_id, data: ie_data.to_vec() }
+                    NgapIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
                 }
             }
             104 => NgapIe::SourceToTargetContainer(ie_data.to_vec()),
             105 => NgapIe::TargetToSourceContainer(ie_data.to_vec()),
-            _ => NgapIe::Unknown { id: ie_id, data: ie_data.to_vec() },
+            _ => NgapIe::Unknown {
+                id: ie_id,
+                data: ie_data.to_vec(),
+            },
         };
 
         ies.push(ie);
@@ -507,13 +607,33 @@ pub enum XnApMessageClass {
 pub enum XnApIe {
     SourceNgRanNodeUeXnApId(u32),
     TargetNgRanNodeUeXnApId(u32),
-    Cause { group: u8, value: u8 },
-    TargetCellGlobalId { plmn: [u8; 3], cell_id: u64 },
+    Cause {
+        group: u8,
+        value: u8,
+    },
+    TargetCellGlobalId {
+        plmn: [u8; 3],
+        cell_id: u64,
+    },
     UeContextInfoHoReq(Vec<u8>),
-    SnStatusTransfer { drb_id: u8, pdcp_sn_ul: u32, pdcp_sn_dl: u32, hfn_ul: u32, hfn_dl: u32 },
+    SnStatusTransfer {
+        drb_id: u8,
+        pdcp_sn_ul: u32,
+        pdcp_sn_dl: u32,
+        hfn_ul: u32,
+        hfn_dl: u32,
+    },
     PduSessionResourcesAdmitted(Vec<XnApPduSession>),
-    UeSecurityCapabilities { nr_ea: u16, nr_ia: u16, e_utra_ea: u16, e_utra_ia: u16 },
-    Unknown { id: u16, data: Vec<u8> },
+    UeSecurityCapabilities {
+        nr_ea: u16,
+        nr_ia: u16,
+        e_utra_ea: u16,
+        e_utra_ia: u16,
+    },
+    Unknown {
+        id: u16,
+        data: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -588,7 +708,10 @@ fn parse_xnap_ies(mut data: &[u8]) -> (Option<u32>, Option<u32>, Vec<XnApIe>) {
                     source_id = Some(id);
                     XnApIe::SourceNgRanNodeUeXnApId(id)
                 } else {
-                    XnApIe::Unknown { id: ie_id, data: ie_data.to_vec() }
+                    XnApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
                 }
             }
             2 => {
@@ -597,31 +720,60 @@ fn parse_xnap_ies(mut data: &[u8]) -> (Option<u32>, Option<u32>, Vec<XnApIe>) {
                     target_id = Some(id);
                     XnApIe::TargetNgRanNodeUeXnApId(id)
                 } else {
-                    XnApIe::Unknown { id: ie_id, data: ie_data.to_vec() }
+                    XnApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
                 }
             }
             13 => {
                 if ie_data.len() >= 2 {
-                    XnApIe::Cause { group: ie_data[0], value: ie_data[1] }
+                    XnApIe::Cause {
+                        group: ie_data[0],
+                        value: ie_data[1],
+                    }
                 } else {
-                    XnApIe::Unknown { id: ie_id, data: ie_data.to_vec() }
+                    XnApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
                 }
             }
             21 => {
                 if ie_data.len() >= 17 {
                     XnApIe::SnStatusTransfer {
                         drb_id: ie_data[0],
-                        pdcp_sn_ul: u32::from_be_bytes([ie_data[1], ie_data[2], ie_data[3], ie_data[4]]),
-                        pdcp_sn_dl: u32::from_be_bytes([ie_data[5], ie_data[6], ie_data[7], ie_data[8]]),
-                        hfn_ul: u32::from_be_bytes([ie_data[9], ie_data[10], ie_data[11], ie_data[12]]),
-                        hfn_dl: u32::from_be_bytes([ie_data[13], ie_data[14], ie_data[15], ie_data[16]]),
+                        pdcp_sn_ul: u32::from_be_bytes([
+                            ie_data[1], ie_data[2], ie_data[3], ie_data[4],
+                        ]),
+                        pdcp_sn_dl: u32::from_be_bytes([
+                            ie_data[5], ie_data[6], ie_data[7], ie_data[8],
+                        ]),
+                        hfn_ul: u32::from_be_bytes([
+                            ie_data[9],
+                            ie_data[10],
+                            ie_data[11],
+                            ie_data[12],
+                        ]),
+                        hfn_dl: u32::from_be_bytes([
+                            ie_data[13],
+                            ie_data[14],
+                            ie_data[15],
+                            ie_data[16],
+                        ]),
                     }
                 } else {
-                    XnApIe::Unknown { id: ie_id, data: ie_data.to_vec() }
+                    XnApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
                 }
             }
             30 => XnApIe::UeContextInfoHoReq(ie_data.to_vec()),
-            _ => XnApIe::Unknown { id: ie_id, data: ie_data.to_vec() },
+            _ => XnApIe::Unknown {
+                id: ie_id,
+                data: ie_data.to_vec(),
+            },
         };
 
         ies.push(ie);
@@ -645,12 +797,14 @@ mod tests {
             0x00, 0x00, 0x01, // sequence=1
             0x00, // spare
             // IE: Recovery Timestamp (type=96, len=4, value=1000)
-            0x00, 0x60, 0x00, 0x04,
-            0x00, 0x00, 0x03, 0xE8,
+            0x00, 0x60, 0x00, 0x04, 0x00, 0x00, 0x03, 0xE8,
         ];
         let msg = parse_pfcp(&data).unwrap();
         assert_eq!(msg.version, 1);
-        assert!(matches!(msg.message_type, PfcpMessageType::HeartbeatRequest));
+        assert!(matches!(
+            msg.message_type,
+            PfcpMessageType::HeartbeatRequest
+        ));
         assert_eq!(msg.seid, None);
     }
 
@@ -662,12 +816,14 @@ mod tests {
             0x32, // Session Establishment Request (50)
             0x00, 0x10, // length=16
             // SEID (8 bytes)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-            0x00, 0x00, 0x02, // sequence=2
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x02, // sequence=2
             0x00, // spare
         ];
         let msg = parse_pfcp(&data).unwrap();
-        assert!(matches!(msg.message_type, PfcpMessageType::SessionEstablishmentRequest));
+        assert!(matches!(
+            msg.message_type,
+            PfcpMessageType::SessionEstablishmentRequest
+        ));
         assert_eq!(msg.seid, Some(1));
         assert_eq!(msg.sequence_number, 2);
     }
@@ -692,15 +848,18 @@ mod tests {
             0x00, // criticality=reject
             0x10, // length (placeholder)
             // IE: RAN-UE-NGAP-ID (id=85, len=4)
-            0x00, 0x55, 0x00, 0x04,
-            0x00, 0x00, 0x00, 0x01,
-            // IE: NAS-PDU (id=38, len=4)
-            0x00, 0x26, 0x00, 0x04,
-            0x7E, 0x00, 0x41, 0x01,
+            0x00, 0x55, 0x00, 0x04, 0x00, 0x00, 0x00, 0x01, // IE: NAS-PDU (id=38, len=4)
+            0x00, 0x26, 0x00, 0x04, 0x7E, 0x00, 0x41, 0x01,
         ];
         let msg = parse_ngap(&data).unwrap();
-        assert!(matches!(msg.procedure_code, NgapProcedureCode::InitialUEMessage));
-        assert!(matches!(msg.message_class, NgapMessageClass::InitiatingMessage));
+        assert!(matches!(
+            msg.procedure_code,
+            NgapProcedureCode::InitialUEMessage
+        ));
+        assert!(matches!(
+            msg.message_class,
+            NgapMessageClass::InitiatingMessage
+        ));
         assert_eq!(msg.ran_ue_ngap_id, Some(1));
     }
 
@@ -710,13 +869,14 @@ mod tests {
             0x00, // InitiatingMessage
             0x01, // procedureCode=1 (HandoverRequired)
             0x00, // criticality
-            0x08,
-            // IE: AMF-UE-NGAP-ID (id=10, len=8)
-            0x00, 0x0A, 0x00, 0x08,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42,
+            0x08, // IE: AMF-UE-NGAP-ID (id=10, len=8)
+            0x00, 0x0A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42,
         ];
         let msg = parse_ngap(&data).unwrap();
-        assert!(matches!(msg.procedure_code, NgapProcedureCode::HandoverRequired));
+        assert!(matches!(
+            msg.procedure_code,
+            NgapProcedureCode::HandoverRequired
+        ));
         assert_eq!(msg.amf_ue_ngap_id, Some(0x42));
     }
 
@@ -726,16 +886,16 @@ mod tests {
             0x00, // InitiatingMessage
             0x00, // procedureCode=0 (HandoverPreparation)
             0x00, // criticality
-            0x08,
-            // IE: source id (id=1, len=4)
-            0x00, 0x01, 0x00, 0x04,
-            0x00, 0x00, 0x00, 0x0A,
+            0x08, // IE: source id (id=1, len=4)
+            0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x0A,
             // IE: target id (id=2, len=4)
-            0x00, 0x02, 0x00, 0x04,
-            0x00, 0x00, 0x00, 0x0B,
+            0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, 0x0B,
         ];
         let msg = parse_xnap(&data).unwrap();
-        assert!(matches!(msg.procedure_code, XnApProcedureCode::HandoverPreparation));
+        assert!(matches!(
+            msg.procedure_code,
+            XnApProcedureCode::HandoverPreparation
+        ));
         assert_eq!(msg.source_ng_ran_node_ue_xnap_id, Some(10));
         assert_eq!(msg.target_ng_ran_node_ue_xnap_id, Some(11));
     }
@@ -748,18 +908,25 @@ mod tests {
             0x00, // criticality
             0x15, // length
             // IE: SN Status (id=21, len=17)
-            0x00, 0x15, 0x00, 0x11,
-            0x01, // drb_id=1
+            0x00, 0x15, 0x00, 0x11, 0x01, // drb_id=1
             0x00, 0x00, 0x00, 0x64, // pdcp_sn_ul=100
             0x00, 0x00, 0x00, 0xC8, // pdcp_sn_dl=200
             0x00, 0x00, 0x00, 0x0A, // hfn_ul=10
             0x00, 0x00, 0x00, 0x14, // hfn_dl=20
         ];
         let msg = parse_xnap(&data).unwrap();
-        assert!(matches!(msg.procedure_code, XnApProcedureCode::SNStatusTransfer));
+        assert!(matches!(
+            msg.procedure_code,
+            XnApProcedureCode::SNStatusTransfer
+        ));
         assert!(matches!(
             msg.ies.first(),
-            Some(XnApIe::SnStatusTransfer { drb_id: 1, pdcp_sn_ul: 100, pdcp_sn_dl: 200, .. })
+            Some(XnApIe::SnStatusTransfer {
+                drb_id: 1,
+                pdcp_sn_ul: 100,
+                pdcp_sn_dl: 200,
+                ..
+            })
         ));
     }
 

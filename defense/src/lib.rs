@@ -219,13 +219,19 @@ impl TelecomCorrelationEngine {
         let imsi_hash = alert.context;
 
         let layer = match alert.alert_type {
-            ALERT_ROGUE_TOWER | ALERT_CELL_ANOMALY | ALERT_RF_FINGERPRINT
+            ALERT_ROGUE_TOWER
+            | ALERT_CELL_ANOMALY
+            | ALERT_RF_FINGERPRINT
             | ALERT_HANDOVER_INTEGRITY => TelecomLayer::Radio,
-            ALERT_DOWNGRADE_ATTACK | ALERT_NAS_REPLAY | ALERT_IMSI_CATCHER
+            ALERT_DOWNGRADE_ATTACK
+            | ALERT_NAS_REPLAY
+            | ALERT_IMSI_CATCHER
             | ALERT_SIGNALING_STORM => TelecomLayer::Nas,
             ALERT_GTP_ANOMALY | ALERT_ROAMING_ANOMALY => TelecomLayer::Transport,
             ALERT_SS7_ANOMALY | ALERT_VOLTE_FRAUD => TelecomLayer::Signaling,
-            ALERT_MODEM_TAMPER | ALERT_ESIM_TAMPER | ALERT_SLICE_VIOLATION
+            ALERT_MODEM_TAMPER
+            | ALERT_ESIM_TAMPER
+            | ALERT_SLICE_VIOLATION
             | ALERT_RAN_SHARING_LEAK => TelecomLayer::Core,
             ALERT_SBI_ANOMALY => TelecomLayer::Sbi,
             _ => TelecomLayer::Core,

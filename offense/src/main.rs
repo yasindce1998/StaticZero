@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use aya::maps::AsyncPerfEventArray;
 use aya::programs::{KProbe, SchedClassifier, Xdp, XdpFlags};
 use aya::util::online_cpus;
-use aya::{Ebpf, EbpfLoader};
+use aya::BpfLoader;
 use bytes::BytesMut;
 use clap::Parser;
 use tokio::signal;
@@ -74,7 +74,7 @@ async fn main() -> Result<()> {
     info!("StaticZero Telecom Offense Loader starting");
     info!("Loading eBPF programs from {:?}", cli.bpf_path);
 
-    let mut bpf = EbpfLoader::new()
+    let mut bpf = BpfLoader::new()
         .load_file(&cli.bpf_path)
         .context("failed to load eBPF object")?;
 
@@ -240,8 +240,8 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                for i in 0..events.read {
-                    let ptr = buffers[i].as_ptr() as *const EventHeader;
+                for buf in buffers.iter().take(events.read) {
+                    let ptr = buf.as_ptr() as *const EventHeader;
                     let header = unsafe { ptr.read_unaligned() };
                     info!(
                         "EVENT type={} pid={} ts={}",

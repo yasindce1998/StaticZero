@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use aya::maps::AsyncPerfEventArray;
 use aya::programs::KProbe;
 use aya::util::online_cpus;
-use aya::EbpfLoader;
+use aya::BpfLoader;
 use bytes::BytesMut;
 use clap::Parser;
 use tokio::signal;
@@ -168,7 +168,7 @@ async fn main() -> Result<()> {
     info!("StaticZero Telecom Defense Engine starting");
     info!("Loading eBPF programs from {:?}", cli.bpf_path);
 
-    let mut bpf = EbpfLoader::new()
+    let mut bpf = BpfLoader::new()
         .load_file(&cli.bpf_path)
         .context("failed to load eBPF object")?;
 

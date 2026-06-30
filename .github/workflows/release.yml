@@ -2,25 +2,28 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
 
 permissions:
   contents: write
 
 jobs:
+  ci:
+    name: CI Gate
+    uses: ./.github/workflows/ci.yml
+
   build:
+    name: Build (${{ matrix.arch }})
+    needs: ci
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             arch: amd64
-            runner: ubuntu-latest
           - target: aarch64-unknown-linux-gnu
             arch: arm64
-            runner: ubuntu-latest
 
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -38,47 +41,45 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
-      - name: Build offense binary
+      - name: Build binaries
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: |
           cargo build --release --target ${{ matrix.target }} -p staticzero-offense
-
-      - name: Build defense binary
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: |
           cargo build --release --target ${{ matrix.target }} -p staticzero-defense
 
-      - name: Package binaries
+      - name: Package
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/staticzero-offense dist/staticzero-offense-linux-${{ matrix.arch }}
           cp target/${{ matrix.target }}/release/staticzero-defense dist/staticzero-defense-linux-${{ matrix.arch }}
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: binaries-linux-${{ matrix.arch }}
+          name: binaries-${{ matrix.arch }}
           path: dist/
 
   release:
+    name: Publish Release
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          path: dist
           merge-multiple: true
 
-      - name: Create release
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum * > checksums-sha256.txt
+
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create ${{ github.ref_name }} \
             --title "StaticZero ${{ github.ref_name }}" \
             --generate-notes \
-            artifacts/*
+            dist/*

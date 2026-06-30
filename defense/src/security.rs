@@ -72,9 +72,7 @@ fn drop_capabilities() -> Result<()> {
         }
     }
 
-    info!(
-        "Dropped capabilities; retained CAP_NET_ADMIN, CAP_PERFMON, CAP_BPF"
-    );
+    info!("Dropped capabilities; retained CAP_NET_ADMIN, CAP_PERFMON, CAP_BPF");
     Ok(())
 }
 

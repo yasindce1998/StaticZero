@@ -270,23 +270,30 @@ impl CorrelationEngine {
         let mut threats = Vec::new();
 
         for rule in &self.rules {
-            let matching_events: Vec<&TelecomEvent> = self.events.iter()
+            let matching_events: Vec<&TelecomEvent> = self
+                .events
+                .iter()
                 .map(|(_, e)| e)
                 .filter(|e| {
-                    rule.required_layers.contains(&e.layer) &&
-                    rule.event_pattern.iter().any(|pat| e.event_type.contains(pat.as_str()))
+                    rule.required_layers.contains(&e.layer)
+                        && rule
+                            .event_pattern
+                            .iter()
+                            .any(|pat| e.event_type.contains(pat.as_str()))
                 })
                 .collect();
 
             if matching_events.len() >= rule.min_events {
-                let layers_seen: Vec<TelecomLayer> = matching_events.iter()
+                let layers_seen: Vec<TelecomLayer> = matching_events
+                    .iter()
                     .map(|e| e.layer)
                     .collect::<std::collections::HashSet<_>>()
                     .into_iter()
                     .collect();
 
                 let layer_coverage = layers_seen.len() as f64 / rule.required_layers.len() as f64;
-                let pattern_coverage = matching_events.len() as f64 / rule.event_pattern.len() as f64;
+                let pattern_coverage =
+                    matching_events.len() as f64 / rule.event_pattern.len() as f64;
                 let confidence = (layer_coverage * 0.6 + pattern_coverage.min(1.0) * 0.4).min(1.0);
 
                 if confidence >= self.threshold {
@@ -297,7 +304,8 @@ impl CorrelationEngine {
                         confidence,
                         severity: rule.severity,
                         layers_involved: layers_seen,
-                        contributing_events: matching_events.iter()
+                        contributing_events: matching_events
+                            .iter()
                             .map(|e| format!("{}:{}", e.event_type, e.source))
                             .collect(),
                         description: rule.description.clone(),
@@ -347,9 +355,11 @@ async fn main() -> Result<()> {
     info!("  Confidence threshold: {}", cli.threshold);
     info!("  Output format: {}", cli.output);
 
-    let engine = Arc::new(Mutex::new(
-        CorrelationEngine::new(cli.window_ms, cli.threshold, cli.max_events)
-    ));
+    let engine = Arc::new(Mutex::new(CorrelationEngine::new(
+        cli.window_ms,
+        cli.threshold,
+        cli.max_events,
+    )));
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", cli.ingest_port))?;
     info!("Listening for events on 127.0.0.1:{}", cli.ingest_port);
@@ -370,9 +380,14 @@ async fn main() -> Result<()> {
             for threat in threats {
                 match output_format.as_str() {
                     "json" => println!("{}", serde_json::to_string(&threat).unwrap()),
-                    "csv" => println!("{},{},{:.2},{:?},\"{}\"",
-                        threat.threat_id, format!("{:?}", threat.category),
-                        threat.confidence, threat.severity, threat.description),
+                    "csv" => println!(
+                        "{},{},{:.2},{:?},\"{}\"",
+                        threat.threat_id,
+                        format!("{:?}", threat.category),
+                        threat.confidence,
+                        threat.severity,
+                        threat.description
+                    ),
                     _ => println!("{}", serde_json::to_string(&threat).unwrap()),
                 }
             }

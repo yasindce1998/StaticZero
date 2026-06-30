@@ -316,7 +316,9 @@ impl FirmwareAnalyzer {
                     size: code_size as u64,
                     section_type: SectionType::Modem,
                     load_address: u32::from_le_bytes([data[8], data[9], data[10], data[11]]) as u64,
-                    entry_point: Some(u32::from_le_bytes([data[12], data[13], data[14], data[15]]) as u64),
+                    entry_point: Some(
+                        u32::from_le_bytes([data[12], data[13], data[14], data[15]]) as u64
+                    ),
                     hash: format!("{:016x}", simple_hash(&data[40..40 + code_size as usize])),
                 });
 
@@ -354,7 +356,8 @@ impl FirmwareAnalyzer {
         // Write extracted sections
         for section in &sections {
             if section.size > 0 && (section.offset + section.size) <= data.len() as u64 {
-                let section_data = &data[section.offset as usize..(section.offset + section.size) as usize];
+                let section_data =
+                    &data[section.offset as usize..(section.offset + section.size) as usize];
                 let out_path = output_dir.join(format!("{}.bin", section.name));
                 fs::write(&out_path, section_data)?;
                 info!("  Extracted {} -> {}", section.name, out_path.display());
@@ -418,7 +421,8 @@ impl FirmwareAnalyzer {
         // Look for TOC (Table of Contents) header
         if data.len() >= 512 {
             let toc_magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-            if toc_magic == 0x53484E00 { // "SHN\0"
+            if toc_magic == 0x53484E00 {
+                // "SHN\0"
                 info!("  Shannon TOC header detected");
                 let num_entries = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
                 info!("  {} TOC entries", num_entries);
@@ -429,17 +433,26 @@ impl FirmwareAnalyzer {
                         break;
                     }
                     let name_bytes = &data[entry_offset..entry_offset + 12];
-                    let name = String::from_utf8_lossy(name_bytes).trim_end_matches('\0').to_string();
+                    let name = String::from_utf8_lossy(name_bytes)
+                        .trim_end_matches('\0')
+                        .to_string();
                     let offset = u32::from_le_bytes([
-                        data[entry_offset + 12], data[entry_offset + 13],
-                        data[entry_offset + 14], data[entry_offset + 15],
+                        data[entry_offset + 12],
+                        data[entry_offset + 13],
+                        data[entry_offset + 14],
+                        data[entry_offset + 15],
                     ]);
                     let size = u32::from_le_bytes([
-                        data[entry_offset + 16], data[entry_offset + 17],
-                        data[entry_offset + 18], data[entry_offset + 19],
+                        data[entry_offset + 16],
+                        data[entry_offset + 17],
+                        data[entry_offset + 18],
+                        data[entry_offset + 19],
                     ]);
 
-                    info!("  Section: {} offset=0x{:x} size=0x{:x}", name, offset, size);
+                    info!(
+                        "  Section: {} offset=0x{:x} size=0x{:x}",
+                        name, offset, size
+                    );
                     sections.push(FirmwareSection {
                         name,
                         offset: offset as u64,
@@ -554,8 +567,8 @@ impl FirmwareAnalyzer {
     }
 
     fn analyze(&self, target: &PathBuf) -> Result<VulnerabilityReport> {
-        let data = fs::read(target)
-            .with_context(|| format!("Failed to read: {}", target.display()))?;
+        let data =
+            fs::read(target).with_context(|| format!("Failed to read: {}", target.display()))?;
 
         info!("Analyzing {} ({} bytes)...", target.display(), data.len());
 
@@ -593,8 +606,14 @@ impl FirmwareAnalyzer {
 
         // Look for strcpy/sprintf usage (common in baseband firmware)
         let dangerous_funcs = [
-            (b"strcpy" as &[u8], "Use of strcpy (potential buffer overflow)"),
-            (b"sprintf", "Use of sprintf (potential format string/overflow)"),
+            (
+                b"strcpy" as &[u8],
+                "Use of strcpy (potential buffer overflow)",
+            ),
+            (
+                b"sprintf",
+                "Use of sprintf (potential format string/overflow)",
+            ),
             (b"gets", "Use of gets (guaranteed buffer overflow)"),
             (b"strcat", "Use of strcat (potential buffer overflow)"),
         ];
@@ -605,8 +624,11 @@ impl FirmwareAnalyzer {
                 findings.push(Finding {
                     severity: Severity::Medium,
                     category: FindingCategory::MemoryCorruption,
-                    title: format!("Dangerous function usage: {} ({} instances)",
-                        String::from_utf8_lossy(pattern), count),
+                    title: format!(
+                        "Dangerous function usage: {} ({} instances)",
+                        String::from_utf8_lossy(pattern),
+                        count
+                    ),
                     description: desc.to_string(),
                     offset: find_pattern(data, pattern).unwrap_or(0) as u64,
                     size: pattern.len() as u64,
@@ -623,7 +645,8 @@ impl FirmwareAnalyzer {
                     severity: Severity::Medium,
                     category: FindingCategory::MemoryCorruption,
                     title: "Fixed load address (no ASLR)".into(),
-                    description: "Firmware loaded at fixed address, no address randomization".into(),
+                    description: "Firmware loaded at fixed address, no address randomization"
+                        .into(),
                     offset: pos as u64,
                     size: 4,
                     cve: None,
@@ -656,7 +679,8 @@ impl FirmwareAnalyzer {
                 severity: Severity::High,
                 category: FindingCategory::CryptoWeakness,
                 title: "Null cipher accepted".into(),
-                description: "Firmware accepts null encryption, enabling passive interception".into(),
+                description: "Firmware accepts null encryption, enabling passive interception"
+                    .into(),
                 offset: 0,
                 size: 0,
                 cve: None,
@@ -699,8 +723,11 @@ impl FirmwareAnalyzer {
                     severity: Severity::Info,
                     category: FindingCategory::DebugInterface,
                     title: format!("Debug interface: {}", desc),
-                    description: format!("Found marker '{}' at offset 0x{:x}",
-                        String::from_utf8_lossy(pattern), pos),
+                    description: format!(
+                        "Found marker '{}' at offset 0x{:x}",
+                        String::from_utf8_lossy(pattern),
+                        pos
+                    ),
                     offset: pos as u64,
                     size: pattern.len() as u64,
                     cve: None,
@@ -754,7 +781,8 @@ impl FirmwareAnalyzer {
             surfaces.push(AttackSurface {
                 interface: "NAS layer".into(),
                 protocol: "NAS/EMM/ESM".into(),
-                description: "Non-Access Stratum — authentication, security mode, session management".into(),
+                description:
+                    "Non-Access Stratum — authentication, security mode, session management".into(),
                 reachable_from: vec!["Core network (MME/AMF)".into(), "MitM relay".into()],
             });
         }
@@ -773,7 +801,11 @@ impl FirmwareAnalyzer {
                 interface: "AT command".into(),
                 protocol: "Hayes AT".into(),
                 description: "Modem control interface via serial/USB".into(),
-                reachable_from: vec!["Application processor".into(), "USB host".into(), "Bluetooth tether".into()],
+                reachable_from: vec![
+                    "Application processor".into(),
+                    "USB host".into(),
+                    "Bluetooth tether".into(),
+                ],
             });
         }
 
@@ -784,10 +816,26 @@ impl FirmwareAnalyzer {
         let mut handlers = Vec::new();
 
         let protocol_signatures: Vec<(&[u8], &str, Vec<&str>)> = vec![
-            (b"rrc_connection_setup", "RRC", vec!["ConnectionSetup", "ConnectionRelease", "Reconfiguration"]),
-            (b"nas_attach", "NAS", vec!["AttachRequest", "AuthRequest", "SecurityModeCmd"]),
-            (b"sip_invite", "SIP", vec!["INVITE", "REGISTER", "BYE", "OPTIONS"]),
-            (b"gtp_create_session", "GTP-C", vec!["CreateSession", "DeleteSession", "ModifyBearer"]),
+            (
+                b"rrc_connection_setup",
+                "RRC",
+                vec!["ConnectionSetup", "ConnectionRelease", "Reconfiguration"],
+            ),
+            (
+                b"nas_attach",
+                "NAS",
+                vec!["AttachRequest", "AuthRequest", "SecurityModeCmd"],
+            ),
+            (
+                b"sip_invite",
+                "SIP",
+                vec!["INVITE", "REGISTER", "BYE", "OPTIONS"],
+            ),
+            (
+                b"gtp_create_session",
+                "GTP-C",
+                vec!["CreateSession", "DeleteSession", "ModifyBearer"],
+            ),
         ];
 
         for (pattern, protocol, msg_types) in &protocol_signatures {
@@ -812,10 +860,22 @@ impl FirmwareAnalyzer {
             (10, "NV_SEC_CODE_I", "Security/lock code (6 digits)"),
             (65, "NV_OTKSL_I", "One-time keypad subsidy lock"),
             (85, "NV_LOCK_CODE_I", "Phone lock code"),
-            (453, "NV_BAND_PREF_I", "Band preference (security: can lock to weak bands)"),
+            (
+                453,
+                "NV_BAND_PREF_I",
+                "Band preference (security: can lock to weak bands)",
+            ),
             (906, "NV_DS_MIP_SS_USER_PROF_I", "MIP shared secret"),
-            (1192, "NV_HDRSCP_SESSION_STATUS_I", "HDR/EV-DO session status"),
-            (6828, "NV_ROAMING_LIST_683_I", "PRL (Preferred Roaming List)"),
+            (
+                1192,
+                "NV_HDRSCP_SESSION_STATUS_I",
+                "HDR/EV-DO session status",
+            ),
+            (
+                6828,
+                "NV_ROAMING_LIST_683_I",
+                "PRL (Preferred Roaming List)",
+            ),
             (6853, "NV_WCDMA_RRC_VERSION_I", "RRC protocol version"),
         ];
 
@@ -832,28 +892,45 @@ impl FirmwareAnalyzer {
         items
     }
 
-    fn apply_patch(&self, image_path: &PathBuf, patch_spec: &PatchSpec, output: &PathBuf) -> Result<()> {
+    fn apply_patch(
+        &self,
+        image_path: &PathBuf,
+        patch_spec: &PatchSpec,
+        output: &PathBuf,
+    ) -> Result<()> {
         let mut data = fs::read(image_path)
             .with_context(|| format!("Failed to read: {}", image_path.display()))?;
 
-        info!("Applying {} patches to firmware...", patch_spec.patches.len());
+        info!(
+            "Applying {} patches to firmware...",
+            patch_spec.patches.len()
+        );
 
         for (i, patch) in patch_spec.patches.iter().enumerate() {
             let offset = patch.offset as usize;
             let end = offset + patch.original.len();
 
             if end > data.len() {
-                warn!("Patch {} extends beyond image boundary (offset 0x{:x})", i, offset);
+                warn!(
+                    "Patch {} extends beyond image boundary (offset 0x{:x})",
+                    i, offset
+                );
                 continue;
             }
 
             if &data[offset..end] != patch.original.as_slice() {
-                warn!("Patch {} original bytes don't match at offset 0x{:x}", i, offset);
+                warn!(
+                    "Patch {} original bytes don't match at offset 0x{:x}",
+                    i, offset
+                );
                 continue;
             }
 
             data[offset..offset + patch.replacement.len()].copy_from_slice(&patch.replacement);
-            info!("  Applied patch {}: {} at 0x{:x}", i, patch.description, offset);
+            info!(
+                "  Applied patch {}: {} at 0x{:x}",
+                i, patch.description, offset
+            );
         }
 
         fs::write(output, &data)?;
@@ -870,7 +947,10 @@ impl FirmwareAnalyzer {
         info!("  New: {} ({} bytes)", new_path.display(), new_data.len());
 
         if old_data.len() != new_data.len() {
-            info!("  Size difference: {} bytes", new_data.len() as i64 - old_data.len() as i64);
+            info!(
+                "  Size difference: {} bytes",
+                new_data.len() as i64 - old_data.len() as i64
+            );
         }
 
         let mut diff_regions = Vec::new();
@@ -895,7 +975,12 @@ impl FirmwareAnalyzer {
 
         info!("  {} differing regions found", diff_regions.len());
         for (offset, size) in diff_regions.iter().take(20) {
-            info!("    0x{:08x} - 0x{:08x} ({} bytes)", offset, offset + size, size);
+            info!(
+                "    0x{:08x} - 0x{:08x} ({} bytes)",
+                offset,
+                offset + size,
+                size
+            );
         }
         if diff_regions.len() > 20 {
             info!("    ... and {} more regions", diff_regions.len() - 20);
@@ -910,7 +995,9 @@ fn find_pattern(data: &[u8], pattern: &[u8]) -> Option<usize> {
 }
 
 fn count_pattern(data: &[u8], pattern: &[u8]) -> usize {
-    data.windows(pattern.len()).filter(|w| *w == pattern).count()
+    data.windows(pattern.len())
+        .filter(|w| *w == pattern)
+        .count()
 }
 
 fn simple_hash(data: &[u8]) -> u64 {
@@ -945,7 +1032,9 @@ fn detect_bands(data: &[u8]) -> Vec<String> {
 
 fn detect_rats(data: &[u8]) -> Vec<String> {
     let mut rats = Vec::new();
-    if find_pattern(data, b"GSM").is_some() { rats.push("GSM (2G)".into()); }
+    if find_pattern(data, b"GSM").is_some() {
+        rats.push("GSM (2G)".into());
+    }
     if find_pattern(data, b"WCDMA").is_some() || find_pattern(data, b"UMTS").is_some() {
         rats.push("UMTS (3G)".into());
     }
@@ -978,14 +1067,13 @@ async fn main() -> Result<()> {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| {
-                    if cli.verbose {
-                        tracing_subscriber::EnvFilter::new("debug")
-                    } else {
-                        tracing_subscriber::EnvFilter::new("info")
-                    }
-                }),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                if cli.verbose {
+                    tracing_subscriber::EnvFilter::new("debug")
+                } else {
+                    tracing_subscriber::EnvFilter::new("info")
+                }
+            }),
         )
         .with_target(false)
         .init();
@@ -993,7 +1081,11 @@ async fn main() -> Result<()> {
     info!("StaticZero Modem Firmware Analysis Tool");
 
     match cli.command {
-        Commands::Extract { image, output, chipset } => {
+        Commands::Extract {
+            image,
+            output,
+            chipset,
+        } => {
             let analyzer = FirmwareAnalyzer::new(&chipset)?;
             let fw = analyzer.extract(&image, &output)?;
             info!("Extraction complete: {} sections found", fw.sections.len());
@@ -1003,20 +1095,31 @@ async fn main() -> Result<()> {
             info!("Manifest written to: {}", manifest_path.display());
         }
 
-        Commands::Analyze { target, chipset, report } => {
+        Commands::Analyze {
+            target,
+            chipset,
+            report,
+        } => {
             let analyzer = FirmwareAnalyzer::new(&chipset)?;
             let report_data = analyzer.analyze(&target)?;
             info!("Analysis complete:");
             info!("  {} findings", report_data.findings.len());
             info!("  {} attack surfaces", report_data.attack_surfaces.len());
-            info!("  {} protocol handlers", report_data.protocol_handlers.len());
+            info!(
+                "  {} protocol handlers",
+                report_data.protocol_handlers.len()
+            );
 
             let json = serde_json::to_string_pretty(&report_data)?;
             fs::write(&report, &json)?;
             info!("Report written to: {}", report.display());
         }
 
-        Commands::Patch { image, patchfile, output } => {
+        Commands::Patch {
+            image,
+            patchfile,
+            output,
+        } => {
             let analyzer = FirmwareAnalyzer::new("qualcomm")?;
             let spec_data = fs::read_to_string(&patchfile)?;
             let spec: PatchSpec = serde_json::from_str(&spec_data)?;
@@ -1034,11 +1137,19 @@ async fn main() -> Result<()> {
             let items = analyzer.find_security_nv_items(&fs::read(&image)?);
             let json = serde_json::to_string_pretty(&items)?;
             fs::write(&output, &json)?;
-            info!("NV dump written to: {} ({} items)", output.display(), items.len());
+            info!(
+                "NV dump written to: {} ({} items)",
+                output.display(),
+                items.len()
+            );
         }
 
         Commands::Monitor { device, protocol } => {
-            info!("Monitoring modem on {} (protocol: {})", device.display(), protocol);
+            info!(
+                "Monitoring modem on {} (protocol: {})",
+                device.display(),
+                protocol
+            );
             info!("Listening for DIAG/AT/QMI messages...");
             info!("(In production: opens device FD, parses protocol frames, streams to stdout)");
             // In production: open /dev/diag or serial, parse DIAG/QMI/AT frames,

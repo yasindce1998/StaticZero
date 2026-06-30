@@ -19,7 +19,10 @@ impl Metrics {
         let registry = Registry::new();
 
         let alerts_total = IntCounterVec::new(
-            Opts::new("staticzero_alerts_total", "Total alerts by type and severity"),
+            Opts::new(
+                "staticzero_alerts_total",
+                "Total alerts by type and severity",
+            ),
             &["alert_type", "severity"],
         )
         .unwrap();
@@ -45,11 +48,8 @@ impl Metrics {
         )
         .unwrap();
 
-        let uptime_seconds = IntGauge::new(
-            "staticzero_uptime_seconds",
-            "Engine uptime in seconds",
-        )
-        .unwrap();
+        let uptime_seconds =
+            IntGauge::new("staticzero_uptime_seconds", "Engine uptime in seconds").unwrap();
 
         let events_processed = IntCounter::new(
             "staticzero_events_processed_total",
@@ -71,9 +71,7 @@ impl Metrics {
         registry
             .register(Box::new(correlation_window_active.clone()))
             .unwrap();
-        registry
-            .register(Box::new(uptime_seconds.clone()))
-            .unwrap();
+        registry.register(Box::new(uptime_seconds.clone())).unwrap();
         registry
             .register(Box::new(events_processed.clone()))
             .unwrap();

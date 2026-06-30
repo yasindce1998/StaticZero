@@ -9,12 +9,10 @@ use aya_ebpf::{
     programs::ProbeContext,
 };
 use common::{
-    CellBaseline, CellInfo, DefenseAlert, RfFingerprint,
-    ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER,
-    ALERT_GTP_ANOMALY, ALERT_IMSI_CATCHER, ALERT_MODEM_TAMPER,
-    ALERT_NAS_REPLAY, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY,
-    ALERT_ROGUE_TOWER, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY,
-    ALERT_VOLTE_FRAUD,
+    CellBaseline, CellInfo, DefenseAlert, RfFingerprint, ALERT_CELL_ANOMALY,
+    ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER, ALERT_GTP_ANOMALY, ALERT_IMSI_CATCHER,
+    ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY,
+    ALERT_ROGUE_TOWER, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_VOLTE_FRAUD,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -209,7 +207,9 @@ fn try_detect_imsi_catcher(ctx: &ProbeContext) -> Result<u32, i64> {
         .map(|c| c.cell_id)
         .unwrap_or(0);
 
-    let count = unsafe { IDENTITY_REQ_COUNT.get(&cell_id) }.copied().unwrap_or(0);
+    let count = unsafe { IDENTITY_REQ_COUNT.get(&cell_id) }
+        .copied()
+        .unwrap_or(0);
     let new_count = count + 1;
     let _ = IDENTITY_REQ_COUNT.insert(&cell_id, &new_count, 0);
 
@@ -311,7 +311,9 @@ fn try_detect_gtp_anomaly(ctx: &ProbeContext) -> Result<u32, i64> {
     let teid: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
 
     if msg_type == GTP_CREATE_SESSION || msg_type == GTP_DELETE_SESSION {
-        let count = unsafe { GTP_SESSION_TRACK.get(&teid) }.copied().unwrap_or(0);
+        let count = unsafe { GTP_SESSION_TRACK.get(&teid) }
+            .copied()
+            .unwrap_or(0);
         let new_count = count + 1;
         let _ = GTP_SESSION_TRACK.insert(&teid, &new_count, 0);
 
@@ -441,7 +443,9 @@ fn try_detect_nas_replay(ctx: &ProbeContext) -> Result<u32, i64> {
     let bearer_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
     let seq_num: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
 
-    let prev_seq = unsafe { NAS_SEQ_TRACKER.get(&bearer_id) }.copied().unwrap_or(0);
+    let prev_seq = unsafe { NAS_SEQ_TRACKER.get(&bearer_id) }
+        .copied()
+        .unwrap_or(0);
 
     // Duplicate or regressed sequence number = replay
     if seq_num <= prev_seq {
@@ -498,7 +502,9 @@ fn try_detect_volte_fraud(ctx: &ProbeContext) -> Result<u32, i64> {
         .map(|c| c.cell_id)
         .unwrap_or(0);
 
-    let count = unsafe { VOLTE_CALL_RATE.get(&cell_id) }.copied().unwrap_or(0);
+    let count = unsafe { VOLTE_CALL_RATE.get(&cell_id) }
+        .copied()
+        .unwrap_or(0);
     let new_count = count + 1;
     let _ = VOLTE_CALL_RATE.insert(&cell_id, &new_count, 0);
 

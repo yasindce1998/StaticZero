@@ -87,8 +87,7 @@ impl AdaptiveThresholds {
         } else {
             state.true_positives += 1;
             // Lower threshold slightly — we're catching real threats
-            state.threshold =
-                (state.threshold - self.learning_rate * 0.5).max(self.global_min);
+            state.threshold = (state.threshold - self.learning_rate * 0.5).max(self.global_min);
         }
     }
 

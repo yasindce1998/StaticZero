@@ -149,15 +149,12 @@ fn try_esim_exploit(ctx: &ProbeContext) -> Result<u32, i64> {
     }
 
     // Check for ES9+ (SM-DP+ to LPA) TLS payload markers
-    let marker: u32 = unsafe {
-        bpf_probe_read_kernel(buf_ptr as *const u32).map_err(|_| 1i64)?
-    };
+    let marker: u32 = unsafe { bpf_probe_read_kernel(buf_ptr as *const u32).map_err(|_| 1i64)? };
 
     // BER-TLV tag for profile download (0xBF36 = GetBoundProfilePackage)
     if marker & 0xFFFF0000 == 0xBF360000 {
-        let eid_hash: u64 = unsafe {
-            bpf_probe_read_kernel((buf_ptr + 8) as *const u64).map_err(|_| 1i64)?
-        };
+        let eid_hash: u64 =
+            unsafe { bpf_probe_read_kernel((buf_ptr + 8) as *const u64).map_err(|_| 1i64)? };
 
         if let Some(_ctx_state) = unsafe { ESIM_PROVISION_STATE.get(&eid_hash) } {
             let event = EventHeader {

@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2021"
 description = "User-space telecom correlation engine for StaticZero defense alerts"
 
+[lib]
+name = "defense"
+
 [dependencies]
 common = { package = "staticzero-common", path = "../common", default-features = false, features = ["user"] }
 anyhow = "1"
-aya = "~0.12"
+aya = { version = "~0.12", features = ["async_tokio"] }
 aya-log = "~0.2"
 bytes = "1"
 chrono = { version = "0.4", features = ["serde"] }

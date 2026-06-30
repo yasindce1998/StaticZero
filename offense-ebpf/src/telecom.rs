@@ -6,9 +6,9 @@ use aya_ebpf::{
 };
 use common::{
     EventHeader, EVENT_AT_CMD_INJECT, EVENT_BASEBAND_EXPLOIT, EVENT_DIAMETER_EXPLOIT,
-    EVENT_GTP_TUNNEL_HIJACK, EVENT_IMSI_INTERCEPT, EVENT_N2_INTERFACE_INJECT,
-    EVENT_NAS_INTERCEPT, EVENT_PROTOCOL_DOWNGRADE, EVENT_RRC_REDIRECT, EVENT_SIM_CLONE,
-    EVENT_SS7_MAP_INJECT, EVENT_SUPI_DECONCEAL,
+    EVENT_GTP_TUNNEL_HIJACK, EVENT_IMSI_INTERCEPT, EVENT_N2_INTERFACE_INJECT, EVENT_NAS_INTERCEPT,
+    EVENT_PROTOCOL_DOWNGRADE, EVENT_RRC_REDIRECT, EVENT_SIM_CLONE, EVENT_SS7_MAP_INJECT,
+    EVENT_SUPI_DECONCEAL,
 };
 
 use crate::maps::*;
@@ -96,18 +96,16 @@ fn try_baseband_exploit(ctx: &ProbeContext) -> Result<u32, i64> {
     }
 
     let urb_ptr: u64 = unsafe { ctx.arg(0).ok_or(1i64)? };
-    let endpoint: u8 = unsafe {
-        bpf_probe_read_kernel((urb_ptr + 20) as *const u8).map_err(|_| 1i64)?
-    };
+    let endpoint: u8 =
+        unsafe { bpf_probe_read_kernel((urb_ptr + 20) as *const u8).map_err(|_| 1i64)? };
 
     // Bulk OUT endpoints to baseband (endpoint & 0x80 == 0 means OUT)
     if endpoint & 0x80 != 0 {
         return Ok(0);
     }
 
-    let transfer_len: u32 = unsafe {
-        bpf_probe_read_kernel((urb_ptr + 136) as *const u32).map_err(|_| 1i64)?
-    };
+    let transfer_len: u32 =
+        unsafe { bpf_probe_read_kernel((urb_ptr + 136) as *const u32).map_err(|_| 1i64)? };
 
     if transfer_len > 256 {
         let event = EventHeader {
@@ -154,9 +152,7 @@ fn try_sim_clone(ctx: &ProbeContext) -> Result<u32, i64> {
 
     // Check for SIM APDU SELECT command (CLA=A0, INS=A4)
     let cla: u8 = unsafe { bpf_probe_read_kernel(buf_ptr as *const u8).map_err(|_| 1i64)? };
-    let ins: u8 = unsafe {
-        bpf_probe_read_kernel((buf_ptr + 1) as *const u8).map_err(|_| 1i64)?
-    };
+    let ins: u8 = unsafe { bpf_probe_read_kernel((buf_ptr + 1) as *const u8).map_err(|_| 1i64)? };
 
     if cla == 0xA0 && (ins == 0xA4 || ins == 0xB0 || ins == 0xB2) {
         let event = EventHeader {
@@ -206,14 +202,11 @@ fn try_imsi_intercept(ctx: &ProbeContext) -> Result<u32, i64> {
     }
 
     // NAS Identity Response message type = 0x56
-    let msg_type: u8 = unsafe {
-        bpf_probe_read_kernel(buf_ptr as *const u8).map_err(|_| 1i64)?
-    };
+    let msg_type: u8 = unsafe { bpf_probe_read_kernel(buf_ptr as *const u8).map_err(|_| 1i64)? };
 
     if msg_type == 0x56 {
-        let imsi_first8: u64 = unsafe {
-            bpf_probe_read_kernel((buf_ptr + 2) as *const u64).map_err(|_| 1i64)?
-        };
+        let imsi_first8: u64 =
+            unsafe { bpf_probe_read_kernel((buf_ptr + 2) as *const u64).map_err(|_| 1i64)? };
 
         if unsafe { IMSI_TARGETS.get(&imsi_first8) }.is_some() {
             let event = EventHeader {
@@ -481,9 +474,7 @@ fn try_nas_intercept(ctx: &ProbeContext) -> Result<u32, i64> {
     }
 
     // NAS Security Header Type + Protocol Discriminator
-    let hdr_byte: u8 = unsafe {
-        bpf_probe_read_kernel(buf_ptr as *const u8).map_err(|_| 1i64)?
-    };
+    let hdr_byte: u8 = unsafe { bpf_probe_read_kernel(buf_ptr as *const u8).map_err(|_| 1i64)? };
 
     // Protocol discriminator 0x7E = 5G NAS, 0x07 = EPS NAS
     let pd = hdr_byte & 0x0F;
@@ -534,9 +525,8 @@ fn try_supi_deconceal(ctx: &ProbeContext) -> Result<u32, i64> {
 
     // Intercept ECIES decryption output (SUPI plaintext)
     let output_ptr: u64 = unsafe { ctx.arg(1).ok_or(1i64)? };
-    let supi_hash: u64 = unsafe {
-        bpf_probe_read_kernel(output_ptr as *const u64).map_err(|_| 1i64)?
-    };
+    let supi_hash: u64 =
+        unsafe { bpf_probe_read_kernel(output_ptr as *const u64).map_err(|_| 1i64)? };
 
     if unsafe { IMSI_TARGETS.get(&supi_hash) }.is_some() {
         let event = EventHeader {

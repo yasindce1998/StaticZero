@@ -59,6 +59,10 @@ struct Cli {
     #[arg(long)]
     enable_5g_advanced: bool,
 
+    /// Enable satellite exploitation (F121-F134: DVB-S2, NTN, Iridium, VSAT, Starlink, ADS-B, GNSS)
+    #[arg(long)]
+    enable_satellite: bool,
+
     /// SBI/core network interface for NF interception
     #[arg(long, default_value = "sbi0")]
     sbi_iface: String,
@@ -66,6 +70,10 @@ struct Cli {
     /// SDR interface for radio-layer attacks
     #[arg(long, default_value = "sdr0")]
     sdr_iface: String,
+
+    /// Satellite ground segment interface
+    #[arg(long, default_value = "sat0")]
+    sat_iface: String,
 }
 
 #[tokio::main]
@@ -93,6 +101,7 @@ async fn main() -> Result<()> {
     let enable_telecom = cli.all || cli.enable_telecom;
     let enable_advanced = cli.all || cli.enable_telecom_advanced;
     let enable_5g = cli.all || cli.enable_5g_advanced;
+    let enable_satellite = cli.all || cli.enable_satellite;
 
     // ── Features 89-100: Telecom Interception ────────────────────────────────
     if enable_telecom {
@@ -304,6 +313,87 @@ async fn main() -> Result<()> {
                 let tc: &mut SchedClassifier = prog.try_into()?;
                 tc.load()?;
                 info!("{} loaded (attach to {} manually)", desc, cli.sbi_iface);
+            }
+        }
+    }
+
+    // ── Features 121-134: Satellite Communications ────────────────────────────
+    if enable_satellite {
+        let sat_kprobes = [
+            (
+                "shadow_dvbs2_intercept",
+                "dvb_dmx_swfilter_packets",
+                "F121: DVB-S2 Downlink Interception",
+            ),
+            (
+                "shadow_ntn_timing_exploit",
+                "tcp_sendmsg",
+                "F123: NTN Timing Advance Exploitation",
+            ),
+            (
+                "shadow_iridium_capture",
+                "sdr_rx_callback",
+                "F125: Iridium L-Band Frame Capture",
+            ),
+            (
+                "shadow_vsat_firmware_extract",
+                "usb_submit_urb",
+                "F127: VSAT Terminal Firmware Extraction",
+            ),
+            (
+                "shadow_starlink_auth_probe",
+                "tcp_sendmsg",
+                "F129: Starlink Dishy Auth Probe",
+            ),
+            (
+                "shadow_sarsat_beacon_spoof",
+                "sdr_rx_callback",
+                "F132: COSPAS-SARSAT Beacon Spoofing",
+            ),
+        ];
+
+        for (name, attach_point, desc) in &sat_kprobes {
+            match bpf.program_mut(name) {
+                Some(prog) => {
+                    let kprobe: &mut KProbe = prog.try_into()?;
+                    kprobe.load()?;
+                    kprobe.attach(attach_point, 0)?;
+                    info!("{} enabled", desc);
+                }
+                None => warn!("{} ({}) not found, skipping", desc, name),
+            }
+        }
+
+        // XDP on satellite interface for ISL fingerprinting and GNSS spoofing
+        let sat_xdp_progs = [
+            ("shadow_isl_fingerprint", "F130: ISL Laser Link Fingerprint"),
+            ("shadow_gnss_l1_spoof", "F133: GPS L1 C/A Code Spoofing"),
+            ("shadow_gnss_l5_spoof", "F134: Multi-Constellation L5/E5 Spoofing"),
+        ];
+
+        for (name, desc) in &sat_xdp_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let xdp: &mut Xdp = prog.try_into()?;
+                xdp.load()?;
+                xdp.attach(&cli.sat_iface, XdpFlags::default())?;
+                info!("{} enabled on {}", desc, cli.sat_iface);
+            }
+        }
+
+        // TC classifiers for satellite injection
+        let tc_sat = [
+            ("shadow_transponder_hijack", "F122: Transponder Hijack Injection"),
+            ("shadow_ntn_gateway_inject", "F124: NTN-5G Core Gateway Injection"),
+            ("shadow_leo_signaling_inject", "F126: LEO Constellation Signaling Injection"),
+            ("shadow_scpc_carrier_manip", "F128: SCPC Carrier Manipulation"),
+            ("shadow_adsb_inject", "F131: ADS-B/ACARS Frame Injection"),
+        ];
+
+        for (name, desc) in &tc_sat {
+            if let Some(prog) = bpf.program_mut(name) {
+                let tc: &mut SchedClassifier = prog.try_into()?;
+                tc.load()?;
+                info!("{} loaded (attach to {} manually)", desc, cli.sat_iface);
             }
         }
     }

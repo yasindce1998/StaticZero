@@ -1,6 +1,6 @@
 # StaticZero
 
-eBPF-based telecom security research framework covering 2G through 5G protocol exploitation and defense. Operates at the kernel level using Linux eBPF for real-time interception, analysis, and anomaly detection across cellular network protocols.
+eBPF-based telecom security research framework covering 2G through 5G and non-terrestrial networks (satellite, GNSS, aviation). Operates at the kernel level using Linux eBPF for real-time interception, analysis, and anomaly detection across cellular and satellite protocols.
 
 > **Research/educational purposes only.** Unauthorized interception of telecommunications is illegal in most jurisdictions.
 
@@ -18,7 +18,7 @@ staticzero/
 └── scripts/          # Lab automation
 ```
 
-## Offensive Capabilities (F89–F120)
+## Offensive Capabilities (F89–F134)
 
 ### Core Telecom Interception (F89–F100)
 
@@ -67,7 +67,26 @@ staticzero/
 | 119 | SUCI Replay Attack | kprobe: `tcp_sendmsg` | Replay SUCI for cross-session tracking |
 | 120 | ARPF Key Extraction | kprobe: `tcp_sendmsg` | Probe UDM/ARPF for auth vectors/keys |
 
-## Defensive Capabilities (Modules 16–32)
+### Satellite Communications (F121–F134)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 121 | DVB-S2 Downlink Interception | kprobe: `dvb_dmx_swfilter_packets` | Broadcast TS capture, BISS key patterns |
+| 122 | Transponder Hijack Injection | TC on sat-iface | Spoofed PLHeader, carrier-ID manipulation |
+| 123 | NTN Timing Advance Exploitation | kprobe: `tcp_sendmsg` | NR-NTN TA pre-compensation exploit |
+| 124 | NTN-5G Core Gateway Injection | TC on sat-iface | NGAP injection via NTN feeder link |
+| 125 | Iridium L-Band Frame Capture | kprobe: `sdr_rx_callback` | 1616–1626.5 MHz burst decode |
+| 126 | LEO Constellation Signaling Injection | TC on sat-iface | Globalstar CDMA / Thuraya GMR-1 |
+| 127 | VSAT Terminal Firmware Extraction | kprobe: `usb_submit_urb` | Hughes/iDirect/Newtec ACM tables |
+| 128 | SCPC Carrier Manipulation | TC on sat-iface | DVB-RCS2 return channel, MF-TDMA slot |
+| 129 | Starlink Dishy Auth Probe | kprobe: `tcp_sendmsg` | gRPC session tokens, firmware channel |
+| 130 | ISL Laser Link Fingerprint | XDP on sat-iface | Inter-satellite laser timing metadata |
+| 131 | ADS-B/ACARS Frame Injection | TC on sat-iface | Mode-S ES (1090 MHz), VHF data link |
+| 132 | COSPAS-SARSAT Beacon Spoofing | kprobe: `sdr_rx_callback` | 406 MHz PLB/ELT hex ID spoofing |
+| 133 | GPS L1 C/A Code Spoofing | XDP on SDR iface | L1 1575.42 MHz PRN code replicas |
+| 134 | Multi-Constellation L5/E5 Spoofing | XDP on SDR iface | GPS L5 + Galileo E5a/b + BeiDou B2a |
+
+## Defensive Capabilities (Modules 16–39)
 
 ### Basic Telecom Detection (16–23)
 
@@ -101,11 +120,29 @@ staticzero/
 | 31 | RAN Sharing Isolation | Cross-operator resource access, PLMN boundary violations |
 | 32 | Signaling Storm Detection | NAS message rate spikes, coordinated attach/paging floods |
 
+### Satellite Defense (33–39)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 33 | DVB-S2/S2X Anomaly Detection | Unauthorized carrier IDs, symbol rate changes, unscheduled MODCOD transitions |
+| 34 | NTN Access Anomaly Detection | Timing advance / ephemeris mismatch, NTN gateway auth failures |
+| 35 | LEO Constellation Signaling Monitor | L-band burst pattern anomalies vs TDM schedule, orbital timing checks |
+| 36 | VSAT/SCPC Integrity Monitor | Unauthorized firmware updates, ACM table changes, burst time plan deviations |
+| 37 | Starlink Authentication Monitor | gRPC token reuse/replay, unauthorized firmware images, TLE timing mismatch |
+| 38 | Aviation/Maritime Signal Integrity | ADS-B physics violations, unauthorized ACARS source IDs, false SARSAT beacons |
+| 39 | GNSS Spoofing Detection | C/N0 anomalies (meaconing), cross-constellation timing divergence, code-phase jumps |
+
 ## Correlation Engine
 
-Cross-layer protocol correlation detects complex attack chains that single-module detection would miss. The `TelecomCorrelationEngine` ingests alerts from all modules and identifies compound threats across six protocol layers (Radio, NAS, Transport, Signaling, Core, SBI).
+Cross-layer protocol correlation detects complex attack chains that single-module detection would miss. The `TelecomCorrelationEngine` ingests alerts from all modules and identifies compound threats across seven protocol layers (Radio, NAS, Transport, Signaling, Core, SBI, Satellite).
 
-Threat categories: IMSI Catching, MitM, Protocol Downgrade, Signaling Abuse, Toll Fraud, Location Tracking, Data Interception, Service Denial, Slice Escape, Roaming Exploit, SBI Compromise, Handover Hijack, RAN Sharing Breach, Signaling Storm, Identity Exposure.
+Threat categories: IMSI Catching, MitM, Protocol Downgrade, Signaling Abuse, Toll Fraud, Location Tracking, Data Interception, Service Denial, Slice Escape, Roaming Exploit, SBI Compromise, Handover Hijack, RAN Sharing Breach, Signaling Storm, Identity Exposure, Satellite Link Hijack, GNSS Spoofing, Beacon Falsification, Terminal Compromise.
+
+Satellite-specific correlation patterns:
+- DVB-S2 anomaly + VSAT integrity failure → coordinated transponder takeover
+- GNSS spoofing + ADS-B injection → aviation-targeted multi-vector attack
+- Starlink auth + LEO signaling anomaly → terminal impersonation chain
+- NTN timing divergence + NAS replay → satellite-terrestrial positioning attack
 
 ## Tools
 
@@ -154,6 +191,10 @@ sudo ./target/release/staticzero-defense --all
 
 # Run offense loader (authorized testing only)
 sudo ./target/release/staticzero-offense --enable-telecom --gtp-iface gtp0
+
+# Run with satellite modules
+sudo ./target/release/staticzero-defense --satellite_defense
+sudo ./target/release/staticzero-offense --enable-satellite --sat-iface sat0
 ```
 
 ## License

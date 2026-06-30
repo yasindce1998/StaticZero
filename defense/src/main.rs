@@ -53,6 +53,10 @@ struct Cli {
     #[arg(long)]
     telecom_5g_defense: bool,
 
+    /// Enable satellite defense modules (33-39)
+    #[arg(long)]
+    satellite_defense: bool,
+
     /// Enable all detection modules
     #[arg(long)]
     all: bool,
@@ -179,6 +183,7 @@ async fn main() -> Result<()> {
     let enable_telecom = cli.all || cli.telecom_detect;
     let enable_advanced = cli.all || cli.telecom_advanced;
     let enable_5g_defense = cli.all || cli.telecom_5g_defense;
+    let enable_satellite = cli.all || cli.satellite_defense;
 
     if enable_telecom {
         let probes = [
@@ -263,6 +268,48 @@ async fn main() -> Result<()> {
         ];
 
         for (name, desc) in &probes_5g {
+            match bpf.program_mut(name) {
+                Some(prog) => {
+                    let kprobe: &mut KProbe = prog.try_into()?;
+                    kprobe.load()?;
+                    kprobe.attach(name.trim_start_matches("detect_"), 0)?;
+                    info!("{} enabled", desc);
+                }
+                None => warn!("{} not found in eBPF object, skipping", name),
+            }
+        }
+    }
+
+    if enable_satellite {
+        let probes_sat = [
+            (
+                "detect_dvbs2_anomaly",
+                "Module 33: DVB-S2/S2X Anomaly Detection",
+            ),
+            ("detect_ntn_anomaly", "Module 34: NTN Access Anomaly"),
+            (
+                "detect_leo_signaling",
+                "Module 35: LEO Constellation Monitor",
+            ),
+            (
+                "detect_vsat_integrity",
+                "Module 36: VSAT/SCPC Integrity Monitor",
+            ),
+            (
+                "detect_starlink_auth",
+                "Module 37: Starlink Auth Monitor",
+            ),
+            (
+                "detect_aviation_integrity",
+                "Module 38: Aviation Signal Integrity",
+            ),
+            (
+                "detect_gnss_spoofing",
+                "Module 39: GNSS Spoofing Detection",
+            ),
+        ];
+
+        for (name, desc) in &probes_sat {
             match bpf.program_mut(name) {
                 Some(prog) => {
                     let kprobe: &mut KProbe = prog.try_into()?;

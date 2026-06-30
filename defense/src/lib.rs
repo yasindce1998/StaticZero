@@ -9,11 +9,13 @@ pub mod server;
 use std::collections::{HashMap as StdHashMap, HashSet, VecDeque};
 
 use common::{
-    DefenseAlert, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER, ALERT_GTP_ANOMALY,
-    ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY,
-    ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER,
-    ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY,
-    ALERT_VOLTE_FRAUD,
+    DefenseAlert, ALERT_AVIATION_INTEGRITY, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK,
+    ALERT_DVBS2_ANOMALY, ALERT_ESIM_TAMPER, ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY,
+    ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_LEO_SIGNALING, ALERT_MODEM_TAMPER,
+    ALERT_NAS_REPLAY, ALERT_NTN_ANOMALY, ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT,
+    ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM,
+    ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_STARLINK_AUTH, ALERT_VOLTE_FRAUD,
+    ALERT_VSAT_INTEGRITY,
 };
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +56,21 @@ pub fn format_alert_details(alert: &DefenseAlert) -> String {
             format!("plmn={}, violation_count={}", alert.context, detail_u64)
         }
         ALERT_SIGNALING_STORM => format!("msg_type={}, rate={}", alert.context, detail_u64),
+        ALERT_DVBS2_ANOMALY => {
+            format!("carrier_id={}, modcod_delta={}", alert.context, detail_u64)
+        }
+        ALERT_NTN_ANOMALY => format!("cell_id={}, ta_jump={}", alert.context, detail_u64),
+        ALERT_LEO_SIGNALING => format!("burst_id={}, rate={}", alert.context, detail_u64),
+        ALERT_VSAT_INTEGRITY => {
+            format!("terminal_id={}, fw_size={}", alert.context, detail_u64)
+        }
+        ALERT_STARLINK_AUTH => {
+            format!("terminal_hash={}, token_reuse={}", alert.context, detail_u64)
+        }
+        ALERT_AVIATION_INTEGRITY => {
+            format!("icao_addr={}, altitude_rate={}", alert.context, detail_u64)
+        }
+        ALERT_GNSS_SPOOFING => format!("prn={}, cn0_delta={}", alert.context, detail_u64),
         _ => format!("context={}", alert.context),
     }
 }
@@ -81,6 +98,7 @@ pub enum TelecomLayer {
     Signaling,
     Core,
     Sbi,
+    Satellite,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +129,10 @@ pub enum ThreatCategory {
     RanSharingBreach,
     SignalingStorm,
     IdentityExposure,
+    SatelliteLinkHijack,
+    GnssSpoofing,
+    BeaconFalsification,
+    TerminalCompromise,
 }
 
 #[derive(Debug, Clone)]
@@ -234,6 +256,13 @@ impl TelecomCorrelationEngine {
             | ALERT_SLICE_VIOLATION
             | ALERT_RAN_SHARING_LEAK => TelecomLayer::Core,
             ALERT_SBI_ANOMALY => TelecomLayer::Sbi,
+            ALERT_DVBS2_ANOMALY
+            | ALERT_NTN_ANOMALY
+            | ALERT_LEO_SIGNALING
+            | ALERT_VSAT_INTEGRITY
+            | ALERT_STARLINK_AUTH
+            | ALERT_AVIATION_INTEGRITY
+            | ALERT_GNSS_SPOOFING => TelecomLayer::Satellite,
             _ => TelecomLayer::Core,
         };
 
@@ -422,6 +451,102 @@ impl TelecomCorrelationEngine {
                     layers.into_iter().collect(),
                     window.events.iter().cloned().collect(),
                     "Signaling storm with correlated multi-layer anomalies — volumetric DoS",
+                );
+                return Some(threat);
+            }
+        }
+
+        // Satellite link hijack: DVB-S2 anomaly + VSAT integrity in same window
+        if layers.contains(&TelecomLayer::Satellite) {
+            let sat_events = window.events_in_layer(TelecomLayer::Satellite);
+            let has_dvbs2 = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_DVBS2_ANOMALY);
+            let has_vsat = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_VSAT_INTEGRITY);
+
+            if has_dvbs2 && has_vsat {
+                let threat = self.build_threat(
+                    ThreatCategory::SatelliteLinkHijack,
+                    0.90,
+                    4,
+                    vec![TelecomLayer::Satellite],
+                    window.events.iter().cloned().collect(),
+                    "DVB-S2 carrier anomaly with VSAT integrity failure — coordinated transponder takeover",
+                );
+                return Some(threat);
+            }
+
+            // GNSS spoofing + ADS-B injection = aviation-targeted multi-vector
+            let has_gnss = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_GNSS_SPOOFING);
+            let has_aviation = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_AVIATION_INTEGRITY);
+
+            if has_gnss && has_aviation {
+                let threat = self.build_threat(
+                    ThreatCategory::BeaconFalsification,
+                    0.95,
+                    5,
+                    vec![TelecomLayer::Satellite],
+                    window.events.iter().cloned().collect(),
+                    "GNSS spoofing + ADS-B anomaly — aviation-targeted multi-vector attack",
+                );
+                return Some(threat);
+            }
+
+            // Starlink auth + LEO signaling = terminal impersonation
+            let has_starlink = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_STARLINK_AUTH);
+            let has_leo = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_LEO_SIGNALING);
+
+            if has_starlink && has_leo {
+                let threat = self.build_threat(
+                    ThreatCategory::TerminalCompromise,
+                    0.85,
+                    4,
+                    vec![TelecomLayer::Satellite],
+                    window.events.iter().cloned().collect(),
+                    "Starlink auth probe with LEO signaling anomaly — terminal impersonation chain",
+                );
+                return Some(threat);
+            }
+
+            // GNSS spoofing alone at high confidence (standalone detection)
+            if has_gnss && sat_events.len() >= 3 {
+                let threat = self.build_threat(
+                    ThreatCategory::GnssSpoofing,
+                    0.82,
+                    4,
+                    vec![TelecomLayer::Satellite],
+                    window.events.iter().cloned().collect(),
+                    "Multiple GNSS spoofing indicators — meaconing attack in progress",
+                );
+                return Some(threat);
+            }
+        }
+
+        // Satellite + NTN terrestrial crossover: NTN anomaly + NAS replay
+        if layers.contains(&TelecomLayer::Satellite) && layers.contains(&TelecomLayer::Nas) {
+            let sat_events = window.events_in_layer(TelecomLayer::Satellite);
+            let has_ntn = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_NTN_ANOMALY);
+
+            if has_ntn {
+                let threat = self.build_threat(
+                    ThreatCategory::SatelliteLinkHijack,
+                    0.88,
+                    4,
+                    vec![TelecomLayer::Satellite, TelecomLayer::Nas],
+                    window.events.iter().cloned().collect(),
+                    "NTN timing anomaly with NAS-layer activity — satellite-terrestrial positioning attack",
                 );
                 return Some(threat);
             }

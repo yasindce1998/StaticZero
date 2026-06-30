@@ -3,6 +3,7 @@
 #![allow(unused_unsafe)]
 
 mod maps;
+mod satellite;
 mod telecom;
 mod telecom_5g;
 mod telecom_advanced;

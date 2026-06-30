@@ -89,6 +89,25 @@ pub const EVENT_SUCI_REPLAY: u32 = 189;
 pub const EVENT_ARPF_PROBE: u32 = 190;
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Satellite Event Constants — Offense (Features 121-134)
+// ══════════════════════════════════════════════════════════════════════════════
+
+pub const EVENT_DVBS2_INTERCEPT: u32 = 191;
+pub const EVENT_TRANSPONDER_HIJACK: u32 = 192;
+pub const EVENT_NTN_TIMING_EXPLOIT: u32 = 193;
+pub const EVENT_NTN_GATEWAY_INJECT: u32 = 194;
+pub const EVENT_IRIDIUM_CAPTURE: u32 = 195;
+pub const EVENT_LEO_SIGNALING_INJECT: u32 = 196;
+pub const EVENT_VSAT_FIRMWARE_EXTRACT: u32 = 197;
+pub const EVENT_SCPC_CARRIER_MANIP: u32 = 198;
+pub const EVENT_STARLINK_AUTH_PROBE: u32 = 199;
+pub const EVENT_ISL_FINGERPRINT: u32 = 200;
+pub const EVENT_ADSB_INJECT: u32 = 201;
+pub const EVENT_SARSAT_BEACON_SPOOF: u32 = 202;
+pub const EVENT_GNSS_L1_SPOOF: u32 = 203;
+pub const EVENT_GNSS_L5_SPOOF: u32 = 204;
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Telecom Defense Alert Constants
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -109,6 +128,18 @@ pub const ALERT_SBI_ANOMALY: u32 = 32;
 pub const ALERT_HANDOVER_INTEGRITY: u32 = 33;
 pub const ALERT_RAN_SHARING_LEAK: u32 = 34;
 pub const ALERT_SIGNALING_STORM: u32 = 35;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Satellite Defense Alert Constants (Modules 33-39)
+// ══════════════════════════════════════════════════════════════════════════════
+
+pub const ALERT_DVBS2_ANOMALY: u32 = 36;
+pub const ALERT_NTN_ANOMALY: u32 = 37;
+pub const ALERT_LEO_SIGNALING: u32 = 38;
+pub const ALERT_VSAT_INTEGRITY: u32 = 39;
+pub const ALERT_STARLINK_AUTH: u32 = 40;
+pub const ALERT_AVIATION_INTEGRITY: u32 = 41;
+pub const ALERT_GNSS_SPOOFING: u32 = 42;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Telecom Structs (eBPF map values)
@@ -466,6 +497,75 @@ pub struct IqSampleMeta {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Satellite Structs (Features 121-134, Modules 33-39)
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SatelliteLinkState {
+    pub carrier_id: u32,
+    pub symbol_rate: u32,
+    pub modcod: u16,
+    pub roll_off: u16,
+    pub frequency_khz: u32,
+    pub polarization: u8,
+    pub _pad: [u8; 3],
+    pub timestamp_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct GnssSignalState {
+    pub prn: u8,
+    pub constellation: u8,
+    pub signal_band: u8,
+    pub _pad: u8,
+    pub cn0_dbhz: u32,
+    pub pseudorange_m: u64,
+    pub doppler_hz: i32,
+    pub code_phase: u32,
+    pub timestamp_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct NtnTimingState {
+    pub ta_value: u32,
+    pub ephem_offset_ms: u32,
+    pub sat_elevation_deg: u16,
+    pub feeder_link_id: u16,
+    pub propagation_delay_us: u32,
+    pub timestamp_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct StarlinkSessionState {
+    pub terminal_id: u64,
+    pub grpc_token_hash: u64,
+    pub ground_station: u32,
+    pub sat_id: u32,
+    pub handover_count: u16,
+    pub firmware_ver: u16,
+    pub _pad: u32,
+    pub timestamp_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AdsbAircraftState {
+    pub icao_addr: u32,
+    pub altitude_ft: i32,
+    pub lat_deg: i32,
+    pub lon_deg: i32,
+    pub velocity_kt: u16,
+    pub heading_deg: u16,
+    pub squawk: u16,
+    pub _pad: u16,
+    pub timestamp_ns: u64,
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Pod trait — required for eBPF map value types
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -506,3 +606,8 @@ unsafe impl Pod for PfcpSessionState {}
 unsafe impl Pod for NgapContext {}
 unsafe impl Pod for XnApContext {}
 unsafe impl Pod for IqSampleMeta {}
+unsafe impl Pod for SatelliteLinkState {}
+unsafe impl Pod for GnssSignalState {}
+unsafe impl Pod for NtnTimingState {}
+unsafe impl Pod for StarlinkSessionState {}
+unsafe impl Pod for AdsbAircraftState {}

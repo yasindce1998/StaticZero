@@ -42,7 +42,11 @@ impl From<&CorrelatedThreat> for ThreatEnvelope {
             severity: t.severity,
             category: format!("{:?}", t.category),
             description: t.description.clone(),
-            layers: t.layers_involved.iter().map(|l| format!("{:?}", l)).collect(),
+            layers: t
+                .layers_involved
+                .iter()
+                .map(|l| format!("{:?}", l))
+                .collect(),
         }
     }
 }

@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::metrics::Metrics;
 use crate::persistence::AlertStore;
@@ -14,7 +14,7 @@ use crate::TelecomCorrelationMetrics;
 
 pub struct AppState {
     pub metrics: Metrics,
-    pub store: Option<AlertStore>,
+    pub store: Option<Mutex<AlertStore>>,
     pub correlation_metrics: RwLock<TelecomCorrelationMetrics>,
     pub start_time: Instant,
 }
@@ -68,19 +68,26 @@ async fn recent_threats(State(state): State<Arc<AppState>>) -> impl IntoResponse
             "persistence disabled".to_string(),
         );
     };
+    let store = store.lock().await;
     match store.recent_threats(50) {
         Ok(threats) => {
-            let json = serde_json::to_string_pretty(&threats.iter().map(|t| {
-                serde_json::json!({
-                    "threat_id": t.threat_id,
-                    "confidence": t.confidence,
-                    "severity": t.severity,
-                    "category": t.category,
-                    "layers": t.layers,
-                    "description": t.description,
-                    "detected_at": t.detected_at,
-                })
-            }).collect::<Vec<_>>()).unwrap_or_else(|_| "[]".into());
+            let json = serde_json::to_string_pretty(
+                &threats
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "threat_id": t.threat_id,
+                            "confidence": t.confidence,
+                            "severity": t.severity,
+                            "category": t.category,
+                            "layers": t.layers,
+                            "description": t.description,
+                            "detected_at": t.detected_at,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_else(|_| "[]".into());
             (StatusCode::OK, json)
         }
         Err(e) => (
@@ -97,19 +104,26 @@ async fn recent_alerts(State(state): State<Arc<AppState>>) -> impl IntoResponse 
             "persistence disabled".to_string(),
         );
     };
+    let store = store.lock().await;
     match store.recent_alerts(100) {
         Ok(alerts) => {
-            let json = serde_json::to_string_pretty(&alerts.iter().map(|a| {
-                serde_json::json!({
-                    "timestamp_ns": a.timestamp_ns,
-                    "alert_type": a.alert_type,
-                    "severity": a.severity,
-                    "pid": a.pid,
-                    "context": a.context,
-                    "details": a.details,
-                    "ingested_at": a.ingested_at,
-                })
-            }).collect::<Vec<_>>()).unwrap_or_else(|_| "[]".into());
+            let json = serde_json::to_string_pretty(
+                &alerts
+                    .iter()
+                    .map(|a| {
+                        serde_json::json!({
+                            "timestamp_ns": a.timestamp_ns,
+                            "alert_type": a.alert_type,
+                            "severity": a.severity,
+                            "pid": a.pid,
+                            "context": a.context,
+                            "details": a.details,
+                            "ingested_at": a.ingested_at,
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap_or_else(|_| "[]".into());
             (StatusCode::OK, json)
         }
         Err(e) => (

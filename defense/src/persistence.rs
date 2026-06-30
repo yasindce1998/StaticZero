@@ -213,10 +213,24 @@ mod tests {
     fn test_insert_and_query_alerts() {
         let store = AlertStore::open_in_memory().unwrap();
         store
-            .insert_alert(1_000_000_000, 19, 3, 100, 0xABCD, "cell_id=43981, signal_delta=0")
+            .insert_alert(
+                1_000_000_000,
+                19,
+                3,
+                100,
+                0xABCD,
+                "cell_id=43981, signal_delta=0",
+            )
             .unwrap();
         store
-            .insert_alert(2_000_000_000, 20, 4, 101, 0x1234, "cell_id=4660, target_rat=0")
+            .insert_alert(
+                2_000_000_000,
+                20,
+                4,
+                101,
+                0x1234,
+                "cell_id=4660, target_rat=0",
+            )
             .unwrap();
 
         let alerts = store.recent_alerts(10).unwrap();

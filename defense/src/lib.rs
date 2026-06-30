@@ -9,10 +9,10 @@ pub mod server;
 use std::collections::{HashMap as StdHashMap, HashSet, VecDeque};
 
 use common::{
-    DefenseAlert, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER,
-    ALERT_GTP_ANOMALY, ALERT_IMSI_CATCHER, ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY,
-    ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SLICE_VIOLATION,
-    ALERT_SS7_ANOMALY, ALERT_VOLTE_FRAUD,
+    DefenseAlert, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_ESIM_TAMPER, ALERT_GTP_ANOMALY,
+    ALERT_IMSI_CATCHER, ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_RF_FINGERPRINT,
+    ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY,
+    ALERT_VOLTE_FRAUD,
 };
 use serde::{Deserialize, Serialize};
 
@@ -286,9 +286,7 @@ impl TelecomCorrelationEngine {
             let sig_events = window.events_in_layer(TelecomLayer::Signaling);
             let trans_events = window.events_in_layer(TelecomLayer::Transport);
 
-            let has_ss7 = sig_events
-                .iter()
-                .any(|e| e.event_type == ALERT_SS7_ANOMALY);
+            let has_ss7 = sig_events.iter().any(|e| e.event_type == ALERT_SS7_ANOMALY);
             let has_gtp = trans_events
                 .iter()
                 .any(|e| e.event_type == ALERT_GTP_ANOMALY);

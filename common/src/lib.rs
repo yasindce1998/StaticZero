@@ -291,6 +291,8 @@ pub struct TelecomCorrelationEvent {
 // Pod trait — required for eBPF map value types
 // ══════════════════════════════════════════════════════════════════════════════
 
+/// # Safety
+/// Implementors must ensure the type has no padding bytes and is valid for any bit pattern.
 pub unsafe trait Pod: Copy + 'static {}
 
 unsafe impl Pod for RootkitConfig {}

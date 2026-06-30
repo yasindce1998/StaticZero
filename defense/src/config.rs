@@ -94,7 +94,6 @@ fn default_location_tracking_min_cells() -> usize {
     3
 }
 
-
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {

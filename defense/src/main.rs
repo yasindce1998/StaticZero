@@ -377,8 +377,8 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                for i in 0..events.read {
-                    let ptr = buffers[i].as_ptr() as *const DefenseAlert;
+                for buf in buffers.iter().take(events.read) {
+                    let ptr = buf.as_ptr() as *const DefenseAlert;
                     let alert = unsafe { ptr.read_unaligned() };
                     if tx.send(alert).await.is_err() {
                         return;

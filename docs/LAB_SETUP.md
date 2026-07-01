@@ -27,6 +27,8 @@ A complete telecom security lab requires:
 | **LimeSDR Mini 2.0** | 10–3500 MHz | 30.72 MHz | Yes | ~$300 | srsRAN base station, NB-IoT |
 | **USRP B210** | 70–6000 MHz | 56 MHz | Yes | ~$2000 | 5G NR research, MIMO, production labs |
 | **USRP X310** | DC–6000 MHz | 160 MHz | Yes | ~$8000 | Carrier-grade testing, wide-band NR |
+| **Yard Stick One** | 300–928 MHz | 20 MHz | Yes | ~$120 | Sub-GHz: RKE, POCSAG, LoRa, AIS |
+| **ADALM-PLUTO** | 325–3800 MHz | 20 MHz | Yes | ~$200 | IoT protocols, LoRa, AIS research |
 
 ### Minimum Viable Lab
 
@@ -53,6 +55,18 @@ For getting started with StaticZero telecom features:
 - Programmable attenuators
 - GPS-disciplined oscillator (GPSDO) for timing
 
+**Extended RF Lab ($8000+):**
+- Everything in Full Lab
+- 1x Ubertooth One (BLE research)
+- 1x Yard Stick One (sub-GHz: RKE, paging, Z-Wave)
+- 1x nRF52840 Dongle (BLE/Thread/Zigbee multi-protocol)
+- 1x ALFA AWUS036ACH (WiFi monitor mode + injection)
+- 1x RAK2287 LoRaWAN gateway module
+- 1x Network TAP for O-RAN fronthaul
+- 1x dAISy HAT (AIS receive)
+- Marine VHF + sub-GHz antennas
+- Pixhawk 4 Mini + SiK radios (MAVLink testing)
+
 ### SDR-to-Feature Mapping
 
 | Feature | Minimum SDR | Notes |
@@ -65,6 +79,19 @@ For getting started with StaticZero telecom features:
 | RF fingerprinting (M28) | RTL-SDR | Passive, needs calibration |
 | VoLTE testing (F101) | bladeRF | Full IMS stack |
 | Femtocell research (F106) | Any TX-capable | Or use real femtocell hardware |
+| TETRA/P25 (F135-F138) | HackRF / Yard Stick One | 380-400 MHz (TETRA), 700-900 MHz (P25) |
+| BLE (F139-F142) | Ubertooth One | 2.4 GHz Bluetooth-specific |
+| Zigbee (F143-F145) | HackRF / ApiMote | 2.4 GHz (802.15.4) |
+| Z-Wave (F144) | Yard Stick One | 868 MHz (EU) / 908 MHz (US) |
+| LoRa (F146-F148) | HackRF / ADALM-PLUTO | 868/915 MHz ISM bands |
+| WiFi (F151-F155) | Any WiFi adapter + monitor mode | ALFA AWUS036ACH recommended |
+| RKE (F156-F157) | Yard Stick One / HackRF | 315/433 MHz OOK/FSK |
+| UAV C2 (F158-F160) | HackRF / USRP B210 | 2.4/5.8 GHz (OcuSync, WiFi) |
+| POCSAG/FLEX (F161-F162) | RTL-SDR | 150-170 MHz (RX only, passive) |
+| RDS/DAB+ (F163-F164) | HackRF | 87.5-108 MHz (FM), 174-240 MHz (DAB) |
+| EAS (F165-F166) | HackRF | 162.4-162.55 MHz (NOAA/EAS) |
+| O-RAN Fronthaul (F167-F170) | Network tap (not SDR) | Ethernet-based eCPRI |
+| AIS (F171-F172) | RTL-SDR / ADALM-PLUTO | 161.975/162.025 MHz |
 
 ### Antenna Selection
 
@@ -77,6 +104,13 @@ For getting started with StaticZero telecom features:
 | LTE B3 | 1805–1880 MHz | Dual-band whip | 4G |
 | NR n78 | 3300–3800 MHz | Horn or patch array | 5G sub-6 |
 | NR n77 | 3300–4200 MHz | Wide-band horn | 5G sub-6 |
+| TETRA | 380–400 MHz | Wideband whip | Public safety LMR |
+| P25 | 700–900 MHz | Dual-band whip | P25 Phase I/II |
+| LoRa/ISM | 868/915 MHz | ¼-wave ground plane | IoT testing |
+| AIS VHF | 162 MHz | Marine VHF whip | AIS research |
+| WiFi 2.4G | 2400–2483 MHz | Omnidirectional | BLE/Zigbee/WiFi |
+| WiFi 5G | 5150–5850 MHz | Patch or panel | WiFi/UAV |
+| Sub-GHz | 300–433 MHz | Telescopic whip | RKE, POCSAG |
 
 ---
 
@@ -242,6 +276,79 @@ sudo systemctl start aegis-sdr-bridge
 
 ---
 
+## 4a. Extended RF Protocol Hardware
+
+### TETRA/P25 Equipment
+
+| Device | Type | Use Case | Price |
+|--------|------|----------|-------|
+| **Motorola APX** | P25 portable | Test radio for P25 Phase II | ~$500 (used) |
+| **Hytera PD785** | DMR/TETRA portable | TETRA air interface testing | ~$400 |
+| **osmo-tetra** | Software decoder | TETRA downlink decode | Free (OSS) |
+| **OP25** | Software decoder | P25 Phase I/II decode | Free (OSS) |
+
+### BLE/Zigbee/Thread Hardware
+
+| Device | Protocol | Interface | Price | Use |
+|--------|----------|-----------|-------|-----|
+| **Ubertooth One** | BLE/Bluetooth | USB | ~$130 | BLE sniffing, injection |
+| **nRF52840 Dongle** | BLE/Thread/Zigbee | USB | ~$10 | Multi-protocol sniffer |
+| **CC2531 USB Dongle** | Zigbee | USB | ~$5 | Zigbee packet capture |
+| **Z-Wave.Me UZB** | Z-Wave | USB | ~$30 | Z-Wave sniffing |
+| **ApiMote** | 802.15.4 | USB | ~$150 | Zigbee injection |
+
+### LoRa/LoRaWAN Hardware
+
+| Device | Type | Interface | Price | Use |
+|--------|------|-----------|-------|-----|
+| **RN2483/RN2903** | LoRa modem | UART | ~$15 | LoRa endpoint emulation |
+| **RAK2287** | LoRaWAN gateway | SPI/USB | ~$100 | Lab gateway for testing |
+| **SX1276 breakout** | LoRa transceiver | SPI | ~$10 | Custom PHY research |
+
+### WiFi Testing Hardware
+
+| Device | Chipset | Monitor Mode | Injection | Use |
+|--------|---------|-------------|-----------|-----|
+| **ALFA AWUS036ACH** | RTL8812AU | Yes | Yes | Dual-band deauth/injection |
+| **ALFA AWUS1900** | RTL8814AU | Yes | Yes | 4x4 MIMO testing |
+| **Panda PAU09** | RT5572 | Yes | Yes | Budget dual-band |
+| **Intel AX210** | AX210 | Yes | Limited | WPA3/WiFi 6E research |
+
+### RKE/Sub-GHz Hardware
+
+| Device | Freq Range | TX | Price | Use |
+|--------|-----------|-----|-------|-----|
+| **Yard Stick One** | 300–928 MHz | Yes | ~$120 | RKE, sub-GHz protocols |
+| **Flipper Zero** | 300–928 MHz | Yes | ~$170 | Sub-GHz TX/RX, NFC, IR |
+| **CC1101 module** | 315–915 MHz | Yes | ~$5 | Custom RKE research |
+
+### UAV/Drone Testing
+
+| Device | Type | Use | Price |
+|--------|------|-----|-------|
+| **Pixhawk 4 Mini** | Flight controller | MAVLink testing | ~$200 |
+| **SiK Telemetry Radio** | 433/915 MHz | MAVLink radio link | ~$40/pair |
+| **DJI Tello** | Consumer drone | DJI protocol research | ~$100 |
+
+### O-RAN Fronthaul Equipment
+
+| Device | Type | Use | Price |
+|--------|------|-----|-------|
+| **Network TAP (Dualcomm)** | Passive Ethernet tap | eCPRI capture | ~$100 |
+| **Mellanox ConnectX-5** | 25GbE NIC | High-speed fronthaul | ~$200 |
+| **DPDK + testpmd** | Software | eCPRI packet generation | Free |
+| **O-RAN SC (Software Community)** | O-DU/O-CU reference | Lab RAN stack | Free (OSS) |
+
+### AIS Maritime Hardware
+
+| Device | Type | Freq | Price | Use |
+|--------|------|------|-------|-----|
+| **dAISy HAT** | AIS receiver | 162 MHz | ~$65 | Raspberry Pi AIS rx |
+| **Quark-elec QK-A027** | AIS transceiver | 162 MHz | ~$200 | AIS TX testing |
+| **RTL-SDR + rtl_ais** | Software receiver | 162 MHz | ~$30 | Low-cost AIS monitoring |
+
+---
+
 ## 5. RF Isolation
 
 ### Why Isolation Matters
@@ -342,6 +449,36 @@ threshold = 0.7
 syslog = true
 json_output = "/var/log/staticzero/telecom-alerts.json"
 severity_threshold = "medium"    # low, medium, high, critical
+
+[lmr]
+tetra_encryption = true
+p25_control = true
+
+[iot]
+ble_pairing = true
+zigbee_key = true
+lorawan_join = true
+nbiot_rrc = true
+
+[wifi]
+deauth_detect = true
+wpa3_integrity = true
+
+[rf_control]
+rke_jamming = true
+uav_c2 = true
+
+[broadcast]
+pager_anomaly = true
+broadcast_injection = true
+eas_spoofing = true
+
+[oran]
+fronthaul_integrity = true
+ric_security = true
+
+[maritime]
+ais_integrity = true
 ```
 
 ### Feature Activation
@@ -368,6 +505,37 @@ sudo staticzero-defense \
 ./target/release/sdr-bridge --sdr-type bladerf --mode scan --scan-bands 3,7
 ./target/release/modem-firmware analyze --chipset qualcomm --firmware modem.mbn
 ./target/release/protocol-correlator --threshold 0.8
+
+# Extended RF domains — Offense
+sudo staticzero-offense \
+  --enable-tetra-p25 \
+  --lmr-iface sdr0
+
+sudo staticzero-offense \
+  --enable-iot-radio \
+  --hci-iface hci0 \
+  --wpan-iface wpan0
+
+sudo staticzero-offense \
+  --enable-wifi \
+  --wlan-iface wlan0
+
+sudo staticzero-offense \
+  --enable-oran \
+  --fronthaul-iface eth1
+
+sudo staticzero-offense \
+  --enable-ais
+
+# Extended RF domains — Defense
+sudo staticzero-defense \
+  --lmr_defense \
+  --iot_defense \
+  --wifi_defense \
+  --rf_control_defense \
+  --broadcast_defense \
+  --oran_defense \
+  --ais_defense
 ```
 
 ---
@@ -414,6 +582,66 @@ sudo staticzero-defense \
 3. Activate Feature 95 (SS7 MAP injection)
 4. Send SendRoutingInfo from unauthorized point code
 5. Verify defense Module 24 (SS7 anomaly) triggers
+
+### Scenario 6: TETRA Encryption Downgrade Detection
+
+1. Set up osmo-tetra decoder with HackRF on TETRA frequency (380-400 MHz)
+2. Configure test TETRA base station (or use SDR-based TETRA transmitter)
+3. Activate Feature F136 (TETRA Encryption Downgrade)
+4. Inject SYSINFO with encryption=0
+5. Verify Module 40 (TETRA Encryption Monitor) fires ALERT_TETRA_ENCRYPTION
+6. Verify correlation with Module 41 if P25 rogue signals detected simultaneously
+
+### Scenario 7: BLE Pairing Downgrade Attack
+
+1. Set up Ubertooth One for BLE sniffing
+2. Configure target BLE device (nRF52840 devkit as peripheral)
+3. Activate Feature F140 (BLE Pairing Downgrade)
+4. Force LE Legacy pairing negotiation
+5. Verify Module 42 detects downgrade: ALERT_BLE_PAIRING
+6. Attempt F141 (BlueBorne probe) and verify L2CAP anomaly detection
+
+### Scenario 8: WiFi Evil Twin + WPA3 Chain
+
+1. Start legitimate AP with WPA3-SAE on test SSID
+2. Connect test client to legitimate AP
+3. Activate Feature F151 (Deauth Flood) to disconnect client
+4. Activate Feature F153 (Evil Twin) with stronger signal
+5. Verify Module 46 detects deauth flood: ALERT_WIFI_DEAUTH
+6. Verify Module 47 detects SAE anomaly: ALERT_WPA3_INTEGRITY
+7. Confirm correlation engine produces `WifiRogueAp` compound threat
+
+### Scenario 9: O-RAN Fronthaul Interception
+
+1. Set up O-RAN SC reference implementation (O-DU + O-RU simulator)
+2. Install passive network TAP on fronthaul Ethernet link
+3. Activate Feature F167 (eCPRI IQ Sample Intercept) on TAP interface
+4. Capture eCPRI frames, verify IQ sample extraction
+5. Activate Feature F168 (Fronthaul MitM) to modify IQ data
+6. Verify Module 53 detects sequence number gaps: ALERT_ORAN_FRONTHAUL
+7. Activate Feature F169 (xApp Exploitation) against Near-RT RIC
+8. Verify Module 54: ALERT_ORAN_RIC
+9. Confirm correlation: `FronthaulCompromise` pattern (severity 5)
+
+### Scenario 10: AIS Position Spoofing
+
+1. Set up dAISy HAT or RTL-SDR with rtl_ais as AIS receiver
+2. Configure AIS TX capability (QK-A027 or SDR at 162 MHz) in shielded box
+3. Activate Feature F171 (AIS Position Spoofing)
+4. Inject ghost vessel with false MMSI + position
+5. Verify Module 55 detects physics violation: ALERT_AIS_INTEGRITY
+6. Combine with Feature F133 (GPS spoofing) for multi-vector test
+7. Confirm correlation: `AisSpoofing` pattern
+
+### Scenario 11: LoRaWAN Join Replay
+
+1. Set up RAK2287 as LoRaWAN gateway connected to ChirpStack
+2. Configure test LoRa device (RN2483) for OTAA join
+3. Capture JoinRequest with HackRF/SDR at 868/915 MHz
+4. Activate Feature F146 (LoRaWAN Join Replay)
+5. Replay JoinRequest with same DevNonce
+6. Verify Module 44 detects nonce reuse: ALERT_LORAWAN_JOIN
+7. Test ABP session hijack (F147) with DevAddr spoofing
 
 ---
 

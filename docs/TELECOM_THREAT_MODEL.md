@@ -192,6 +192,242 @@ This document maps the attack surfaces, threat actors, and attack paths across c
 
 ---
 
+### TETRA/P25 — Public Safety LMR
+
+```
+[TETRA Air Interface Attack]
+├── [Passive] TEA1 cipher exploitation (CVE-2022-24400)
+│   ├── 80-bit key reduced to 32-bit effective (backdoor)
+│   └── Requires: SDR @ 380–400 MHz, offline brute-force
+├── [Active] Encryption downgrade
+│   ├── Inject SYSINFO with encryption=0
+│   ├── Force SCK → DCK fallback
+│   └── Force TEA3 → TEA1 (weaker algorithm)
+├── [OTA Key Management] CVE-2022-24401
+│   └── Key stream reuse under TETRA air interface
+└── [Identity] TETRA subscriber identity tracking
+    └── Monitor unencrypted SYSINFO PDUs for radio IDs
+
+[P25 LMR Attack]
+├── [Passive] Control channel harvest
+│   ├── FDMA control channel decode (Phase I)
+│   ├── TDMA control channel decode (Phase II)
+│   └── Extract TGID, radio ID, WACN, NAC
+├── [Active] IMBE voice intercept
+│   └── Systems without AES-256/DES-OFB are cleartext
+└── [Active] Rogue P25 repeater
+    └── Higher power → force radio affiliation
+```
+
+**StaticZero Coverage:**
+- Offense: F135 (TETRA intercept), F136 (encryption downgrade), F137 (P25 harvest), F138 (IMBE intercept)
+- Defense: M40 (TETRA encryption monitor), M41 (P25 control integrity)
+
+---
+
+### IoT Radio Protocols (BLE/Zigbee/LoRa/NB-IoT)
+
+```
+[BLE/Bluetooth Attack]
+├── [Passive] GATT enumeration (CVE-2020-0022)
+│   └── Service discovery, handle-value dumping
+├── [Active] Pairing downgrade
+│   ├── Force LE Legacy from Secure Connections
+│   ├── Passkey brute-force (6 digits = 1M combinations)
+│   └── JustWorks exploitation (no MITM protection)
+├── [Active] BlueBorne-style RCE
+│   ├── L2CAP info leak (CVE-2017-1000251)
+│   └── Heap overflow via malformed PDU
+└── [Active] Advertisement spoofing
+    └── iBeacon/Eddystone impersonation
+
+[Zigbee/Z-Wave/Thread Attack]
+├── [Passive] Zigbee key sniffing
+│   ├── Transport key visible during standard join
+│   ├── ZLL touchlink commissioning key exchange
+│   └── Requires: Capture during provisioning window
+├── [Active] Z-Wave S0 key extraction
+│   ├── S0 temporary key is 0x00...00 (by design)
+│   └── Network key revealed in single handshake
+└── [Active] Thread MLE exploitation
+    └── Leader election manipulation, mesh partitioning
+
+[LoRaWAN Attack]
+├── [Active] OTAA Join Replay
+│   ├── DevNonce reuse → session key derivation
+│   └── Exploits: implementations without nonce tracking
+├── [Active] ABP Session Hijack
+│   ├── Static keys → DevAddr spoofing
+│   ├── Frame counter desync → injection
+│   └── No mutual authentication in ABP mode
+└── [Passive] PHY-layer capture
+    └── CSS chirp demodulation at ISM bands
+
+[NB-IoT/LTE-M Attack]
+├── [Passive] Pre-auth NAS extraction
+│   └── Messages before security context (same as LTE)
+└── [Active] eDRX/PSM timing attack
+    └── Paging occasion prediction → targeted exploitation
+```
+
+**StaticZero Coverage:**
+- Offense: F139–F142 (BLE), F143–F145 (Zigbee/Z-Wave/Thread), F146–F148 (LoRa), F149–F150 (NB-IoT)
+- Defense: M42 (BLE pairing), M43 (Zigbee key), M44 (LoRaWAN join), M45 (NB-IoT RRC)
+
+---
+
+### WiFi 802.11
+
+```
+[WiFi Denial of Service]
+├── [Active] Deauth/Disassoc flood
+│   ├── Targeted (specific STA MAC)
+│   ├── Broadcast (entire BSS)
+│   └── Pre-condition for evil twin
+├── [Active] CSA (Channel Switch) abuse
+│   └── Force clients to move to attacker channel
+└── [Active] NAV hijacking
+    └── Virtual carrier sense manipulation
+
+[WiFi Credential Theft]
+├── [Active] WPA3 Dragonblood (CVE-2019-9494/5/6/7)
+│   ├── SAE timing side-channel
+│   ├── SAE cache side-channel
+│   └── Group downgrade to weak curve
+├── [Active] Evil Twin / Karma
+│   ├── SSID impersonation (stronger signal)
+│   ├── Probe response to all probe requests
+│   └── Captive portal credential harvest
+├── [Passive] PMKID capture
+│   ├── RSN IE in EAPOL message 1
+│   └── No client interaction required
+└── [Active] FT roaming abuse (802.11r)
+    └── PMKR1 extraction during fast transition
+```
+
+**StaticZero Coverage:**
+- Offense: F151 (deauth), F152 (WPA3), F153 (evil twin), F154 (FT abuse), F155 (PMKID)
+- Defense: M46 (deauth detection), M47 (WPA3/FT integrity)
+
+---
+
+### RF Control Systems (RKE/UAV)
+
+```
+[Remote Keyless Entry Attack]
+├── [Active] RollJam
+│   ├── Jam 315/433 MHz + capture valid code
+│   ├── Victim retries → capture second code
+│   └── Replay first code → have spare stored
+├── [Active] Relay/Amplification
+│   ├── 125 kHz wake → relay over IP
+│   ├── 315/433 MHz response → relay back
+│   └── Effective range: unlimited (IP backhaul)
+└── [Passive] Code analysis
+    └── Fixed-code systems → simple replay
+
+[UAV/Drone C2 Attack]
+├── [Active] MAVLink injection
+│   ├── No authentication in MAVLink v1
+│   ├── v2 signing optional (rarely enabled)
+│   └── Commands: SET_MODE, NAV_WAYPOINT, RTL
+├── [Passive] DJI DroneID decode
+│   ├── OFDM at 2.4/5.8 GHz
+│   ├── Operator GPS, serial number, flight path
+│   └── Mandatory in newer DJI firmware
+└── [Passive] FPV video intercept
+    └── Analog 5.8 GHz FM or digital (unencrypted)
+```
+
+**StaticZero Coverage:**
+- Offense: F156 (RollJam), F157 (relay), F158 (MAVLink), F159 (DroneID), F160 (FPV)
+- Defense: M48 (RKE jamming), M49 (UAV C2 integrity)
+
+---
+
+### Broadcast/Paging Systems
+
+```
+[Paging System Attack]
+├── [Passive] POCSAG decode
+│   ├── All paging is broadcast unencrypted
+│   ├── 512/1200/2400 baud FSK demod
+│   └── Extract: RIC address, message content
+└── [Passive] FLEX/ReFLEX decode
+    └── 4-FSK 1600/3200/6400 baud
+
+[Broadcast Injection]
+├── [Active] FM RDS spoofing
+│   ├── RadioText/PS name injection
+│   └── TMC traffic message falsification
+├── [Active] DAB+ FIC manipulation
+│   └── Service reconfiguration via FIG injection
+├── [Active] EAS/SAME header injection
+│   ├── Valid SAME format with false content
+│   └── 1050 Hz AFSK header spoof
+└── [Active] WEA/CMAS cell broadcast
+    ├── SIB12 injection (requires rogue eNB)
+    └── Presidential-level alerts cannot be disabled
+```
+
+**StaticZero Coverage:**
+- Offense: F161–F162 (paging), F163–F164 (RDS/DAB+), F165–F166 (EAS/WEA)
+- Defense: M50 (pager anomaly), M51 (broadcast injection), M52 (EAS spoofing)
+
+---
+
+### O-RAN Fronthaul
+
+```
+[O-RAN Fronthaul Attack]
+├── [Passive] eCPRI IQ sample capture
+│   ├── Unencrypted per O-RAN WG4 specification
+│   ├── Full UE data reconstruction from IQ
+│   └── Requires: Ethernet tap on fronthaul segment
+├── [Active] Fronthaul MitM
+│   ├── Modify DL IQ → alter what UE receives
+│   ├── Modify UL IQ → alter what gNB decodes
+│   ├── Tamper beamforming weights → steer nulls
+│   └── Selective resource block nulling
+├── [Active] RIC exploitation
+│   ├── Rogue xApp registration
+│   ├── E2 subscription manipulation
+│   ├── A1 policy injection
+│   └── O1 configuration tampering
+└── [Active] F1AP exploitation
+    ├── UE context theft (security keys)
+    ├── DRB redirect between CU and DU
+    └── RRC message injection via CU/DU split
+```
+
+**StaticZero Coverage:**
+- Offense: F167 (eCPRI intercept), F168 (fronthaul MitM), F169 (xApp exploit), F170 (F1AP exploit)
+- Defense: M53 (fronthaul integrity), M54 (RIC security monitor)
+
+---
+
+### AIS Maritime
+
+```
+[AIS Attack]
+├── [Active] Position spoofing
+│   ├── False MMSI + position on VHF (161.975/162.025 MHz)
+│   ├── Ghost vessel creation
+│   └── Real vessel position masking
+├── [Active] Collision avoidance abuse
+│   ├── Inject ghost tracks triggering CPA/TCPA alarms
+│   ├── Force shipping lane diversions
+│   └── Port closure via phantom vessel swarm
+└── [Combined] AIS + GNSS spoofing
+    └── Multi-vector maritime navigation attack
+```
+
+**StaticZero Coverage:**
+- Offense: F171 (AIS spoofing), F172 (collision avoidance abuse)
+- Defense: M55 (AIS signal integrity)
+
+---
+
 ## Cross-Generation Attack Patterns
 
 ### Protocol Downgrade Chain
@@ -226,6 +462,13 @@ The correlation engine detects multi-layer attack sequences:
 | Slice Escape | Core→Transport | S-NSSAI mismatch + cross-UPF traffic + GTP anomaly | Isolation breach |
 | Roaming Fraud | Signaling→Core | ULR from unknown VPLMN + ISD without auth | Roaming exploit |
 | Femtocell MitM | Radio→NAS→Transport | CSG access + IPsec anomaly + RRC reconfiguration | Local intercept |
+| TETRA+P25 Downgrade | LMR→Radio | TETRA encryption=0 + P25 rogue control in same time window | LMR surveillance |
+| IoT Mesh Compromise | IoT→IoT | BLE pairing downgrade + Zigbee key sniff on same network | Smart building takeover |
+| WiFi Rogue AP Chain | WiFi→WiFi | Deauth flood + evil twin + WPA3 SAE failure | Credential harvest |
+| O-RAN Full MitM | O-RAN→Core | Fronthaul IQ tamper + RIC xApp compromise + F1AP exploit | Complete RAN compromise |
+| Maritime Multi-Vector | Maritime→Satellite | AIS spoofing + GPS spoofing + VSAT integrity failure | Navigation attack |
+| UAV Takeover Chain | RF Control | MAVLink injection + DroneID spoof + FPV intercept | Full UAV compromise |
+| Emergency Alert Fabrication | Broadcast→Core | EAS header + WEA SIB12 + broadcast injection | Mass panic/disruption |
 
 ---
 
@@ -241,6 +484,13 @@ The correlation engine detects multi-layer attack sequences:
 | T1557 | Adversary-in-the-Middle | F94, F97, F101, F104, F106 |
 | T1499 | Endpoint Denial of Service | F103 (slice DoS) |
 | T1565 | Data Manipulation | F96, F100, F108 |
+| T1498 | Network Denial of Service | F151, F165, F172, M46, M52, M55 |
+| T1205 | Traffic Signaling | F156, F157, M48 |
+| T1595.002 | Active Scanning: Vulnerability Scanning | F139, F143, F146, M42, M43, M44 |
+| T1071.001 | Application Layer Protocol: Web | F167, F169, M53, M54 |
+| T1542 | Pre-OS Boot | F140, F144, M42, M43 |
+| T1040 | Network Sniffing | F135, F137, F155, F161, M40, M41 |
+| T1531 | Account Access Removal | F136, F152, M40, M47 |
 
 ---
 
@@ -258,6 +508,17 @@ The correlation engine detects multi-layer attack sequences:
 | eSIM provisioning attack | Low | High | High | M25 |
 | LI abuse (insider) | Low | Critical | Very High | Audit logs only |
 | Roaming/IPX pivot | Medium | High | High | M27 + correlation |
+| TETRA cipher downgrade | High | Critical | Medium | M40 (TEA monitoring) |
+| BLE pairing exploitation | High | Medium | Low | M42 (pairing defense) |
+| Zigbee key sniffing | Medium | High | Medium | M43 (key provisioning) |
+| LoRaWAN session hijack | Medium | High | Medium | M44 (join integrity) |
+| WiFi deauth/evil twin | High | Medium | Low | M46 + M47 (correlation) |
+| WPA3 Dragonblood | Low | High | High | M47 (SAE timing) |
+| RollJam vehicle attack | Medium | High | High | M48 (RF energy) |
+| MAVLink UAV hijack | Medium | Critical | Medium | M49 (C2 integrity) |
+| EAS/WEA alert spoofing | Low | Critical | High | M52 (header validation) |
+| O-RAN fronthaul MitM | Low | Critical | Very High | M53 + M54 (correlation) |
+| AIS position spoofing | Medium | High | Medium | M55 (physics validation) |
 
 ---
 
@@ -285,3 +546,33 @@ The correlation engine detects multi-layer attack sequences:
 - SEPP integrity for roaming
 - SBA API authentication hardening
 - RF fingerprinting for rogue gNB detection (Module 28)
+
+### TETRA/P25 (Public Safety)
+- Enforce TEA3 minimum cipher (disable TEA1 — backdoored)
+- Enable end-to-end encryption for sensitive communications
+- Monitor for SYSINFO encryption indicator changes (Module 40)
+- Deploy P25 AES-256 encryption on all talk groups
+
+### IoT (BLE/Zigbee/LoRa)
+- Enforce LE Secure Connections (reject LE Legacy pairing)
+- Use Zigbee 3.0 Install Code provisioning (never unprotected join)
+- Prefer LoRaWAN OTAA over ABP; enforce DevNonce tracking
+- Enable Z-Wave S2 security (retire S0 devices)
+
+### WiFi 802.11
+- Deploy WIDS (Wireless Intrusion Detection System) with deauth monitoring
+- Enable WPA3 with SAE-PK (Public Key) to prevent Dragonblood
+- Disable 802.11r FT in environments without legitimate roaming needs
+- Monitor for BSSID impersonation (same SSID, different hardware fingerprint)
+
+### O-RAN
+- Encrypt fronthaul using MACsec (IEEE 802.1AE) where supported
+- Enforce xApp authentication and authorization on Near-RT RIC
+- Monitor eCPRI sequence numbers for injection/drop detection (Module 53)
+- Restrict E2/A1 interfaces to authenticated sources only
+
+### Maritime AIS
+- Cross-validate AIS reports with radar/LRIT/satellite tracking
+- Flag position reports violating physics constraints (Module 55)
+- Implement multi-source verification for CPA/TCPA alerts
+- Deploy AIS receiver authentication where mandated

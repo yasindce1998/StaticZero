@@ -100,6 +100,7 @@ struct CorrelationEngine {
 }
 
 struct CorrelationRule {
+    #[allow(dead_code)]
     name: String,
     category: ThreatCategory,
     severity: ThreatSeverity,

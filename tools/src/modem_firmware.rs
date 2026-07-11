@@ -3,10 +3,9 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 #[derive(Debug, Parser)]
 #[command(name = "modem-firmware")]
@@ -369,7 +368,7 @@ impl FirmwareAnalyzer {
         Ok(sections)
     }
 
-    fn extract_mediatek(&self, data: &[u8], output_dir: &PathBuf) -> Result<Vec<FirmwareSection>> {
+    fn extract_mediatek(&self, data: &[u8], _output_dir: &PathBuf) -> Result<Vec<FirmwareSection>> {
         info!("Parsing MediaTek format...");
         let mut sections = Vec::new();
 
@@ -415,7 +414,7 @@ impl FirmwareAnalyzer {
         Ok(sections)
     }
 
-    fn extract_shannon(&self, data: &[u8], output_dir: &PathBuf) -> Result<Vec<FirmwareSection>> {
+    fn extract_shannon(&self, data: &[u8], _output_dir: &PathBuf) -> Result<Vec<FirmwareSection>> {
         info!("Parsing Samsung Shannon format...");
         let mut sections = Vec::new();
 
@@ -471,7 +470,7 @@ impl FirmwareAnalyzer {
         Ok(sections)
     }
 
-    fn extract_xgold(&self, data: &[u8], output_dir: &PathBuf) -> Result<Vec<FirmwareSection>> {
+    fn extract_xgold(&self, data: &[u8], _output_dir: &PathBuf) -> Result<Vec<FirmwareSection>> {
         info!("Parsing Intel XGold/XMM format...");
         let sections = Vec::new();
 
@@ -490,7 +489,7 @@ impl FirmwareAnalyzer {
         Ok(sections)
     }
 
-    fn extract_balong(&self, data: &[u8], output_dir: &PathBuf) -> Result<Vec<FirmwareSection>> {
+    fn extract_balong(&self, data: &[u8], _output_dir: &PathBuf) -> Result<Vec<FirmwareSection>> {
         info!("Parsing Huawei Balong format...");
         let sections = Vec::new();
 
@@ -507,7 +506,7 @@ impl FirmwareAnalyzer {
         Ok(sections)
     }
 
-    fn parse_elf_sections(&self, data: &[u8], output_dir: &PathBuf) -> Result<FirmwareSection> {
+    fn parse_elf_sections(&self, data: &[u8], _output_dir: &PathBuf) -> Result<FirmwareSection> {
         // Minimal ELF parsing for modem images
         let entry_point = if data.len() >= 24 {
             u32::from_le_bytes([data[24], data[25], data[26], data[27]]) as u64
@@ -854,7 +853,7 @@ impl FirmwareAnalyzer {
         handlers
     }
 
-    fn find_security_nv_items(&self, data: &[u8]) -> Vec<NvItem> {
+    fn find_security_nv_items(&self, _data: &[u8]) -> Vec<NvItem> {
         let mut items = Vec::new();
 
         // Well-known Qualcomm NV items of security interest

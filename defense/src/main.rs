@@ -122,7 +122,7 @@ async fn main() -> Result<()> {
     let json_mode = cli.json || config.engine.json_output;
 
     // ── Phase 3: Observability — metrics ────────────────────────────────────
-    let metrics = Metrics::new();
+    let metrics = Metrics::new()?;
     let start_time = Instant::now();
 
     // ── Phase 2: Persistence layer ──────────────────────────────────────────

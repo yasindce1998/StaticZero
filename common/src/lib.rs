@@ -1,8 +1,11 @@
-#![no_std]
+//! Shared types between eBPF kernel programs and user-space components.
+//!
+//! All types are `#[repr(C)]` and `Copy` to satisfy eBPF map value constraints.
+//! This crate is `no_std` so it can be linked into both `*-ebpf` (kernel) and
+//! user-space crates. The optional `user` feature enables `serde` derives for
+//! JSON serialization in the defense and tools binaries.
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Core Infrastructure Types (self-contained, no external dependency)
-// ══════════════════════════════════════════════════════════════════════════════
+#![no_std]
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -611,3 +614,181 @@ unsafe impl Pod for GnssSignalState {}
 unsafe impl Pod for NtnTimingState {}
 unsafe impl Pod for StarlinkSessionState {}
 unsafe impl Pod for AdsbAircraftState {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::mem;
+
+    #[test]
+    fn struct_sizes_are_stable() {
+        assert_eq!(mem::size_of::<RootkitConfig>(), 8);
+        assert_eq!(mem::size_of::<EventHeader>(), 24);
+        assert_eq!(mem::size_of::<DefenseAlert>(), 48);
+        assert_eq!(mem::size_of::<CellInfo>(), 20);
+        assert_eq!(mem::size_of::<AtCommandCtx>(), 80);
+        assert_eq!(mem::size_of::<GtpTunnelState>(), 32);
+        assert_eq!(mem::size_of::<SignalingState>(), 32);
+        assert_eq!(mem::size_of::<CellBaseline>(), 24);
+        assert_eq!(mem::size_of::<TelecomCorrelationEvent>(), 40);
+    }
+
+    #[test]
+    fn struct_alignment_is_repr_c() {
+        assert_eq!(mem::align_of::<RootkitConfig>(), 4);
+        assert_eq!(mem::align_of::<EventHeader>(), 8);
+        assert_eq!(mem::align_of::<DefenseAlert>(), 8);
+        assert_eq!(mem::align_of::<CellInfo>(), 4);
+        assert_eq!(mem::align_of::<GtpTunnelState>(), 8);
+    }
+
+    #[test]
+    fn event_constants_are_unique() {
+        let offense_events = [
+            EVENT_AT_CMD_INJECT,
+            EVENT_BASEBAND_EXPLOIT,
+            EVENT_SIM_CLONE,
+            EVENT_IMSI_INTERCEPT,
+            EVENT_PROTOCOL_DOWNGRADE,
+            EVENT_GTP_TUNNEL_HIJACK,
+            EVENT_SS7_MAP_INJECT,
+            EVENT_DIAMETER_EXPLOIT,
+            EVENT_RRC_REDIRECT,
+            EVENT_NAS_INTERCEPT,
+            EVENT_SUPI_DECONCEAL,
+            EVENT_N2_INTERFACE_INJECT,
+            EVENT_VOLTE_INTERCEPT,
+            EVENT_SIP_HIJACK,
+            EVENT_RTP_CAPTURE,
+            EVENT_ESIM_PROFILE_INJECT,
+            EVENT_SMDP_EXPLOIT,
+            EVENT_SLICE_ISOLATION_BYPASS,
+            EVENT_NSSF_MANIPULATE,
+            EVENT_VOWIFI_DOWNGRADE,
+            EVENT_EPDG_EXPLOIT,
+            EVENT_LI_X1_INJECT,
+            EVENT_LI_X2_INTERCEPT,
+            EVENT_FEMTOCELL_PIVOT,
+            EVENT_HENB_GW_EXPLOIT,
+            EVENT_SUPL_SPOOF,
+            EVENT_LPP_MANIPULATE,
+            EVENT_ROAMING_IPX_PIVOT,
+            EVENT_GRX_LATERAL,
+            EVENT_PBCH_SIB_SPOOF,
+            EVENT_RRC_MEAS_MANIPULATE,
+            EVENT_HANDOVER_HIJACK,
+            EVENT_SBI_EXPLOIT,
+            EVENT_NRF_ABUSE,
+            EVENT_OAUTH2_THEFT,
+            EVENT_JAMMING_EVASION,
+            EVENT_MIMO_FINGERPRINT,
+            EVENT_SIDELINK_EXPLOIT,
+            EVENT_AKA_DOWNGRADE,
+            EVENT_SUCI_REPLAY,
+            EVENT_ARPF_PROBE,
+            EVENT_DVBS2_INTERCEPT,
+            EVENT_TRANSPONDER_HIJACK,
+            EVENT_NTN_TIMING_EXPLOIT,
+            EVENT_NTN_GATEWAY_INJECT,
+            EVENT_IRIDIUM_CAPTURE,
+            EVENT_LEO_SIGNALING_INJECT,
+            EVENT_VSAT_FIRMWARE_EXTRACT,
+            EVENT_SCPC_CARRIER_MANIP,
+            EVENT_STARLINK_AUTH_PROBE,
+            EVENT_ISL_FINGERPRINT,
+            EVENT_ADSB_INJECT,
+            EVENT_SARSAT_BEACON_SPOOF,
+            EVENT_GNSS_L1_SPOOF,
+            EVENT_GNSS_L5_SPOOF,
+        ];
+        for i in 0..offense_events.len() {
+            for j in (i + 1)..offense_events.len() {
+                assert_ne!(
+                    offense_events[i], offense_events[j],
+                    "Duplicate event constant at indices {} and {}",
+                    i, j
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn alert_constants_are_unique() {
+        let alerts = [
+            ALERT_ROGUE_TOWER,
+            ALERT_DOWNGRADE_ATTACK,
+            ALERT_IMSI_CATCHER,
+            ALERT_CELL_ANOMALY,
+            ALERT_GTP_ANOMALY,
+            ALERT_SS7_ANOMALY,
+            ALERT_MODEM_TAMPER,
+            ALERT_NAS_REPLAY,
+            ALERT_VOLTE_FRAUD,
+            ALERT_ESIM_TAMPER,
+            ALERT_SLICE_VIOLATION,
+            ALERT_ROAMING_ANOMALY,
+            ALERT_RF_FINGERPRINT,
+            ALERT_SBI_ANOMALY,
+            ALERT_HANDOVER_INTEGRITY,
+            ALERT_RAN_SHARING_LEAK,
+            ALERT_SIGNALING_STORM,
+            ALERT_DVBS2_ANOMALY,
+            ALERT_NTN_ANOMALY,
+            ALERT_LEO_SIGNALING,
+            ALERT_VSAT_INTEGRITY,
+            ALERT_STARLINK_AUTH,
+            ALERT_AVIATION_INTEGRITY,
+            ALERT_GNSS_SPOOFING,
+        ];
+        for i in 0..alerts.len() {
+            for j in (i + 1)..alerts.len() {
+                assert_ne!(
+                    alerts[i], alerts[j],
+                    "Duplicate alert constant at indices {} and {}",
+                    i, j
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn event_and_alert_ranges_dont_overlap() {
+        let min_event = EVENT_AT_CMD_INJECT;
+        let max_event = EVENT_GNSS_L5_SPOOF;
+        let min_alert = ALERT_ROGUE_TOWER;
+        let max_alert = ALERT_GNSS_SPOOFING;
+        assert!(
+            max_alert < min_event || max_event < min_alert,
+            "Event range [{min_event},{max_event}] overlaps alert range [{min_alert},{max_alert}]"
+        );
+    }
+
+    #[test]
+    fn pod_types_have_no_padding_invariant() {
+        // Verify structs where we can calculate expected size from fields
+        // RootkitConfig: u32 + u32 = 8
+        assert_eq!(mem::size_of::<RootkitConfig>(), 4 + 4);
+        // EventHeader: u32 + u32 + u64 + u64 = 24
+        assert_eq!(mem::size_of::<EventHeader>(), 4 + 4 + 8 + 8);
+        // SignalingState: u32*4 + u64*2 = 32
+        assert_eq!(mem::size_of::<SignalingState>(), 4 * 4 + 8 * 2);
+    }
+
+    #[test]
+    fn satellite_struct_sizes() {
+        assert_eq!(mem::size_of::<SatelliteLinkState>(), 32);
+        assert_eq!(mem::size_of::<GnssSignalState>(), 32);
+        assert_eq!(mem::size_of::<NtnTimingState>(), 24);
+        assert_eq!(mem::size_of::<StarlinkSessionState>(), 40);
+        assert_eq!(mem::size_of::<AdsbAircraftState>(), 32);
+    }
+
+    #[test]
+    fn fiveg_struct_sizes() {
+        assert_eq!(mem::size_of::<SbiSessionState>(), 40);
+        assert_eq!(mem::size_of::<NrfRegistration>(), 32);
+        assert_eq!(mem::size_of::<AkaAuthState>(), 64);
+        assert_eq!(mem::size_of::<HandoverCtx>(), 24);
+        assert_eq!(mem::size_of::<SidelinkCtx>(), 32);
+    }
+}

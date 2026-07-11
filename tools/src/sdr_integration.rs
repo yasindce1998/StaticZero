@@ -1,3 +1,5 @@
+//! SDR (Software Defined Radio) bridge for real-time RF signal capture and injection.
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -212,7 +214,7 @@ impl SdrBridge {
     }
 
     pub fn start_capture(&self, iq_pipe: Option<&PathBuf>) -> Result<()> {
-        *self.running.lock().unwrap() = true;
+        *self.running.lock().expect("lock poisoned") = true;
         info!(
             "Starting IQ capture at {}MHz",
             self.config.frequency_hz / 1_000_000
@@ -290,7 +292,7 @@ impl SdrBridge {
             config.bits_per_sample,
         );
 
-        *self.running.lock().unwrap() = true;
+        *self.running.lock().expect("lock poisoned") = true;
 
         let (tx, rx) = mpsc::channel::<Vec<u8>>(config.buffer_size / 4096);
 
@@ -321,7 +323,7 @@ impl SdrBridge {
     }
 
     pub fn stop(&self) {
-        *self.running.lock().unwrap() = false;
+        *self.running.lock().expect("lock poisoned") = false;
         info!("SDR capture stopped");
     }
 }
@@ -417,7 +419,7 @@ fn lte_band_earfcns(band: &str) -> Vec<u32> {
 }
 
 fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
-    let reader = BufReader::new(stream.try_clone().unwrap());
+    let reader = BufReader::new(stream.try_clone().expect("clone TCP stream"));
     let mut writer = stream;
 
     for line in reader.lines() {
@@ -434,7 +436,11 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
                     data: None,
                     error: Some(format!("Invalid JSON: {}", e)),
                 };
-                let _ = writeln!(writer, "{}", serde_json::to_string(&resp).unwrap());
+                let _ = writeln!(
+                    writer,
+                    "{}",
+                    serde_json::to_string(&resp).expect("serialize")
+                );
                 continue;
             }
         };
@@ -450,7 +456,7 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
                 match bridge.scan_cells(&earfcn_list) {
                     Ok(results) => SdrResponse {
                         status: "ok".into(),
-                        data: Some(serde_json::to_value(&results).unwrap()),
+                        data: Some(serde_json::to_value(&results).expect("serialize")),
                         error: None,
                     },
                     Err(e) => SdrResponse {
@@ -476,7 +482,7 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
             "fingerprint" => match bridge.get_rf_fingerprint() {
                 Ok(fp) => SdrResponse {
                     status: "ok".into(),
-                    data: Some(serde_json::to_value(&fp).unwrap()),
+                    data: Some(serde_json::to_value(&fp).expect("serialize")),
                     error: None,
                 },
                 Err(e) => SdrResponse {
@@ -507,7 +513,7 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
                 }
             }
             "status" => {
-                let running = *bridge.running.lock().unwrap();
+                let running = *bridge.running.lock().expect("lock poisoned");
                 SdrResponse {
                     status: "ok".into(),
                     data: Some(serde_json::json!({
@@ -526,7 +532,11 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
             },
         };
 
-        let _ = writeln!(writer, "{}", serde_json::to_string(&resp).unwrap());
+        let _ = writeln!(
+            writer,
+            "{}",
+            serde_json::to_string(&resp).expect("serialize")
+        );
     }
 }
 

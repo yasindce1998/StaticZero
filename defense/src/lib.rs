@@ -1,3 +1,10 @@
+//! StaticZero defense engine — real-time telecom threat detection via eBPF.
+//!
+//! Ingests alerts from kernel-space eBPF probes, correlates them across protocol
+//! layers (radio, NAS, transport, signaling, core), and emits enriched threat
+//! intelligence with MITRE ATT&CK mappings. Provides an HTTP API for metrics,
+//! alert history, and operator feedback.
+
 pub mod adaptive;
 pub mod bus;
 pub mod config;

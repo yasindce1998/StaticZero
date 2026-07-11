@@ -1,3 +1,5 @@
+//! SQLite persistence for alerts and correlated threats.
+
 use std::path::Path;
 
 use anyhow::{Context, Result};

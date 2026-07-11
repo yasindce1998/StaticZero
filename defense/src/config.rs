@@ -1,3 +1,5 @@
+//! TOML configuration with filesystem-watch hot-reload.
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

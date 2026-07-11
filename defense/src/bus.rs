@@ -1,3 +1,5 @@
+//! In-process publish/subscribe message bus for threat events and operator feedback.
+
 use std::sync::Arc;
 
 use anyhow::Result;

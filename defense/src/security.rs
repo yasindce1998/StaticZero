@@ -1,3 +1,5 @@
+//! Process hardening — privilege dropping, seccomp, and environment validation.
+
 use anyhow::Result;
 use tracing::{info, warn};
 

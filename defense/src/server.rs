@@ -1,3 +1,5 @@
+//! HTTP API server — Prometheus metrics, health checks, alert queries, and feedback.
+
 use std::sync::Arc;
 use std::time::Instant;
 

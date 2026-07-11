@@ -1,3 +1,5 @@
+//! Telecom protocol dissectors — PFCP, Diameter, GTP-C, SIP, and RRC parsing.
+
 use serde::{Deserialize, Serialize};
 
 // ── PFCP (N4 Interface — 3GPP TS 29.244) ──────────────────────────────────────

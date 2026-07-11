@@ -36,10 +36,14 @@ jobs:
         run: cargo check -p staticzero-defense
       - name: Check common crate
         run: cargo check -p staticzero-common --features user
+      - name: Check tools crate
+        run: cargo check -p staticzero-tools
       - name: Clippy defense
         run: cargo clippy -p staticzero-defense -- -D warnings
       - name: Clippy common
         run: cargo clippy -p staticzero-common --features user -- -D warnings
+      - name: Clippy tools
+        run: cargo clippy -p staticzero-tools -- -D warnings
 
   test:
     name: Tests
@@ -49,4 +53,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
-        run: cargo test -p staticzero-defense
+        run: cargo test -p staticzero-defense -p staticzero-common -p staticzero-tools
+
+  deny:
+    name: Supply Chain (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2

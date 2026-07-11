@@ -1,3 +1,5 @@
+//! Cross-layer protocol correlation engine for telecom threat detection.
+
 use anyhow::Result;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -374,12 +376,12 @@ async fn main() -> Result<()> {
         loop {
             interval.tick().await;
             let threats = {
-                let mut eng = correlate_engine.lock().unwrap();
+                let mut eng = correlate_engine.lock().expect("lock poisoned");
                 eng.correlate()
             };
             for threat in threats {
                 match output_format.as_str() {
-                    "json" => println!("{}", serde_json::to_string(&threat).unwrap()),
+                    "json" => println!("{}", serde_json::to_string(&threat).expect("serialize")),
                     "csv" => println!(
                         "{},{},{:.2},{:?},\"{}\"",
                         threat.threat_id,
@@ -388,7 +390,7 @@ async fn main() -> Result<()> {
                         threat.severity,
                         threat.description
                     ),
-                    _ => println!("{}", serde_json::to_string(&threat).unwrap()),
+                    _ => println!("{}", serde_json::to_string(&threat).expect("serialize")),
                 }
             }
         }
@@ -408,7 +410,7 @@ async fn main() -> Result<()> {
                                 Err(_) => break,
                             };
                             if let Ok(event) = serde_json::from_str::<TelecomEvent>(&line) {
-                                eng.lock().unwrap().ingest(event);
+                                eng.lock().expect("lock poisoned").ingest(event);
                             }
                         }
                     });
@@ -419,7 +421,10 @@ async fn main() -> Result<()> {
     });
 
     tokio::signal::ctrl_c().await?;
-    let stats = engine.lock().unwrap().stats();
-    info!("Shutdown — {}", serde_json::to_string(&stats).unwrap());
+    let stats = engine.lock().expect("lock poisoned").stats();
+    info!(
+        "Shutdown — {}",
+        serde_json::to_string(&stats).expect("serialize")
+    );
     Ok(())
 }

@@ -1,3 +1,5 @@
+//! Adaptive confidence thresholds that decay over time to reduce alert fatigue.
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};

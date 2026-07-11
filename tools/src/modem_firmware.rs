@@ -1,3 +1,5 @@
+//! Baseband modem firmware analysis — extraction, diffing, and vulnerability scanning.
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};

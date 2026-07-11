@@ -1,0 +1,44 @@
+# StaticZero Defense Engine — Example Configuration
+# Copy to /etc/staticzero/config.toml (or pass --config <path>)
+# Hot-reload: changes are picked up automatically without restart.
+
+[engine]
+# Correlation time window in seconds — events within this window are
+# cross-referenced for multi-layer threat detection.
+correlation_window_secs = 60
+
+# Enable basic telecom detection modules (16-23):
+# rogue tower, downgrade, IMSI catcher, cell anomaly, GTP, SS7, modem, NAS
+telecom_detect = true
+
+# Enable advanced telecom detection modules (24-28):
+# VoLTE fraud, eSIM tamper, slice violation, roaming anomaly, RF fingerprint
+telecom_advanced = false
+
+# Emit alerts as JSON lines (for SIEM/pipeline ingestion)
+json_output = false
+
+[persistence]
+# SQLite alert and threat storage
+enabled = true
+db_path = "/var/lib/staticzero/alerts.db"
+
+# How long to retain historical alerts (hours)
+retention_hours = 168  # 7 days
+
+[server]
+# HTTP API for Prometheus metrics, health, and alert queries
+enabled = true
+listen_addr = "0.0.0.0:9100"
+
+[thresholds]
+# Minimum confidence score (0.0–1.0) to fire a correlated threat
+min_confidence = 0.6
+
+# Per-category overrides — raise these to reduce false positives
+mitm_confidence = 0.92
+imsi_catch_confidence = 0.88
+signaling_abuse_confidence = 0.85
+
+# Minimum distinct cells for location tracking correlation
+location_tracking_min_cells = 3

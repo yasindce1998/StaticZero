@@ -1,0 +1,11 @@
+[package]
+name = "xtask"
+version = "0.4.0"
+license = "MIT"
+edition = "2021"
+description = "Workspace automation for StaticZero (eBPF build orchestration)"
+publish = false
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }

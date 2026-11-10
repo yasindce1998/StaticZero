@@ -50,9 +50,7 @@ fn try_dvbs2_intercept(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 8] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 8] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8])? };
 
     if hdr[0] == DVB_S2_SYNC {
         let carrier_id = u32::from_be_bytes([0, hdr[1], hdr[2], hdr[3]]);
@@ -143,9 +141,7 @@ fn try_ntn_timing_exploit(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 8] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 8] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8])? };
 
     if hdr[0] == NTN_TA_MSG_TYPE {
         let ta_value = u32::from_be_bytes([hdr[1], hdr[2], hdr[3], hdr[4]]);
@@ -239,9 +235,7 @@ fn try_iridium_capture(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 8] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 8] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8])? };
 
     if hdr[0] == IRIDIUM_RING_ALERT || hdr[0] == IRIDIUM_SIMPLEX_MARKER {
         let frame_type = hdr[0] as u64;
@@ -319,9 +313,7 @@ fn try_vsat_firmware_extract(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let urb_ptr: *const u8 = ctx.arg(0).ok_or(0i64)?;
-    let hdr: [u8; 8] = unsafe {
-        bpf_probe_read_kernel(&*urb_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 8] = unsafe { bpf_probe_read_kernel(&*urb_ptr as *const u8 as *const [u8; 8])? };
 
     let endpoint = hdr[0];
     let transfer_type = hdr[1];
@@ -406,9 +398,7 @@ fn try_starlink_auth_probe(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 8] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 8] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8])? };
 
     let magic = u32::from_be_bytes([0, hdr[0], hdr[1], hdr[2]]);
     if magic == GRPC_MAGIC {
@@ -572,9 +562,7 @@ fn try_sarsat_beacon_spoof(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 8] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 8] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8])? };
 
     let marker = u16::from_be_bytes([hdr[0], hdr[1]]);
     if marker == SARSAT_406_MARKER {

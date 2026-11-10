@@ -1,16 +1,15 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
-use aya::maps::AsyncPerfEventArray;
+use aya::maps::RingBuf;
 use aya::programs::{KProbe, SchedClassifier, Xdp, XdpFlags};
-use aya::util::online_cpus;
 use aya::BpfLoader;
-use bytes::BytesMut;
 use clap::Parser;
 use tokio::signal;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use common::EventHeader;
@@ -63,6 +62,10 @@ struct Cli {
     #[arg(long)]
     enable_satellite: bool,
 
+    /// Enable RF protocol domain exploitation (F135-F172: TETRA/P25, BLE, Zigbee, LoRaWAN, NB-IoT, WiFi, RKE, UAV, paging, broadcast, O-RAN, AIS)
+    #[arg(long)]
+    enable_rf: bool,
+
     /// SBI/core network interface for NF interception
     #[arg(long, default_value = "sbi0")]
     sbi_iface: String,
@@ -74,6 +77,18 @@ struct Cli {
     /// Satellite ground segment interface
     #[arg(long, default_value = "sat0")]
     sat_iface: String,
+
+    /// WPAN (Zigbee/Z-Wave/Thread) interface
+    #[arg(long, default_value = "wpan0")]
+    wpan_iface: String,
+
+    /// UAV telemetry / command-and-control interface
+    #[arg(long, default_value = "uav0")]
+    uav_iface: String,
+
+    /// O-RAN fronthaul Ethernet interface (eCPRI/F1AP)
+    #[arg(long, default_value = "eth0")]
+    fronthaul_iface: String,
 }
 
 #[tokio::main]
@@ -102,6 +117,7 @@ async fn main() -> Result<()> {
     let enable_advanced = cli.all || cli.enable_telecom_advanced;
     let enable_5g = cli.all || cli.enable_5g_advanced;
     let enable_satellite = cli.all || cli.enable_satellite;
+    let enable_rf = cli.all || cli.enable_rf;
 
     // ── Features 89-100: Telecom Interception ────────────────────────────────
     if enable_telecom {
@@ -413,42 +429,235 @@ async fn main() -> Result<()> {
         }
     }
 
-    // ── Event loop ───────────────────────────────────────────────────────────
-    let mut perf_array = AsyncPerfEventArray::try_from(
-        bpf.take_map("TELECOM_EVENTS")
-            .context("TELECOM_EVENTS map not found")?,
-    )?;
+    // ── Features 135-172: RF Protocol Domains ────────────────────────────────
+    if enable_rf {
+        let rf_kprobes = [
+            (
+                "shadow_tetra_intercept",
+                "sdr_rx_callback",
+                "F135: TETRA Air Interface Intercept",
+            ),
+            (
+                "shadow_p25_control_harvest",
+                "sdr_rx_callback",
+                "F137: P25 Control Channel Harvest",
+            ),
+            (
+                "shadow_ble_gatt_enum",
+                "hci_send_frame",
+                "F139: BLE GATT Enumeration",
+            ),
+            (
+                "shadow_ble_pairing_downgrade",
+                "smp_send_cmd",
+                "F140: BLE Pairing Downgrade",
+            ),
+            (
+                "shadow_blueborne_probe",
+                "l2cap_recv_frame",
+                "F141: BlueBorne-style RCE Probe",
+            ),
+            (
+                "shadow_zigbee_key_sniff",
+                "sdr_rx_callback",
+                "F143: Zigbee Network Key Sniff",
+            ),
+            (
+                "shadow_zwave_s0_extract",
+                "sdr_rx_callback",
+                "F144: Z-Wave S0 Key Extraction",
+            ),
+            (
+                "shadow_lorawan_join_replay",
+                "sdr_rx_callback",
+                "F146: LoRaWAN Join Replay",
+            ),
+            (
+                "shadow_lora_phy_jam",
+                "sdr_rx_callback",
+                "F148: LoRa PHY Jamming/Capture",
+            ),
+            (
+                "shadow_nbiot_rrc_exploit",
+                "qmi_wwan_rx_fixup",
+                "F149: NB-IoT RRC/NAS Exploit",
+            ),
+            (
+                "shadow_wpa3_dragonblood",
+                "cfg80211_rx_mgmt",
+                "F152: WPA3 Dragonblood Exploit",
+            ),
+            (
+                "shadow_evil_twin_karma",
+                "cfg80211_rx_mgmt",
+                "F153: Evil Twin/Karma Attack",
+            ),
+            (
+                "shadow_pmkid_capture",
+                "cfg80211_rx_mgmt",
+                "F155: PMKID Capture",
+            ),
+            (
+                "shadow_rolljam_attack",
+                "sdr_rx_callback",
+                "F156: RollJam Rolling Code Attack",
+            ),
+            (
+                "shadow_dji_droneid_fingerprint",
+                "sdr_rx_callback",
+                "F159: DJI OcuSync Fingerprint",
+            ),
+            (
+                "shadow_pocsag_decode",
+                "sdr_rx_callback",
+                "F161: POCSAG Message Decode",
+            ),
+            (
+                "shadow_flex_intercept",
+                "sdr_rx_callback",
+                "F162: FLEX/ReFLEX Intercept",
+            ),
+            (
+                "shadow_oran_xapp_exploit",
+                "tcp_sendmsg",
+                "F169: O-RAN xApp Exploitation",
+            ),
+            (
+                "shadow_ais_cpa_abuse",
+                "sdr_rx_callback",
+                "F172: AIS Collision Avoidance Abuse",
+            ),
+        ];
 
-    let cpus = online_cpus().map_err(|e| anyhow::anyhow!("failed to get online CPUs: {}", e))?;
-    for cpu_id in cpus {
-        let mut buf = perf_array.open(cpu_id, None)?;
-        let running = running.clone();
+        for (name, attach_point, desc) in &rf_kprobes {
+            match bpf.program_mut(name) {
+                Some(prog) => {
+                    let kprobe: &mut KProbe = prog.try_into()?;
+                    kprobe.load()?;
+                    kprobe.attach(attach_point, 0)?;
+                    info!("{} enabled", desc);
+                }
+                None => warn!("{} ({}) not found, skipping", desc, name),
+            }
+        }
 
-        tokio::spawn(async move {
-            let mut buffers = (0..10)
-                .map(|_| BytesMut::with_capacity(256))
-                .collect::<Vec<_>>();
+        // XDP programs for RF domains (SDR + fronthaul interfaces)
+        let rf_xdp_progs = [
+            (
+                "shadow_p25_imbe_intercept",
+                "F138: P25 IMBE Voice Interception",
+                &cli.sdr_iface,
+            ),
+            (
+                "shadow_lorawan_abp_hijack",
+                "F147: LoRaWAN ABP Session Hijack",
+                &cli.sdr_iface,
+            ),
+            (
+                "shadow_rke_relay_attack",
+                "F157: RKE Relay/Amplification Attack",
+                &cli.sdr_iface,
+            ),
+            (
+                "shadow_fpv_video_intercept",
+                "F160: FPV Video Link Intercept",
+                &cli.sdr_iface,
+            ),
+            (
+                "shadow_ecpri_iq_intercept",
+                "F167: eCPRI IQ Sample Intercept",
+                &cli.fronthaul_iface,
+            ),
+        ];
 
-            while running.load(Ordering::Relaxed) {
-                let events = match buf.read_events(&mut buffers).await {
-                    Ok(events) => events,
-                    Err(e) => {
-                        error!("Error reading perf events: {}", e);
-                        continue;
-                    }
-                };
+        for (name, desc, iface) in &rf_xdp_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let xdp: &mut Xdp = prog.try_into()?;
+                xdp.load()?;
+                xdp.attach(iface, XdpFlags::default())?;
+                info!("{} enabled on {}", desc, iface);
+            }
+        }
 
-                for buf in buffers.iter().take(events.read) {
-                    let ptr = buf.as_ptr() as *const EventHeader;
-                    let header = unsafe { ptr.read_unaligned() };
-                    info!(
-                        "EVENT type={} pid={} ts={}",
-                        header.event_type, header.pid, header.timestamp_ns
-                    );
+        // TC classifiers for RF domain injection
+        let tc_rf = [
+            ("shadow_tetra_downgrade", "F136: TETRA Encryption Downgrade"),
+            ("shadow_ble_adv_spoof", "F142: BLE Advertisement Spoofing"),
+            (
+                "shadow_thread_mle_exploit",
+                "F145: Thread/6LoWPAN MLE Exploit",
+            ),
+            (
+                "shadow_ltem_edrx_timing",
+                "F150: LTE-M eDRX/PSM Timing Attack",
+            ),
+            (
+                "shadow_wifi_deauth_flood",
+                "F151: WiFi Deauth/Disassoc Flood",
+            ),
+            ("shadow_ft_roaming_abuse", "F154: FT Roaming Abuse"),
+            ("shadow_mavlink_inject", "F158: MAVLink Command Injection"),
+            ("shadow_rds_inject", "F163: FM RDS Injection"),
+            (
+                "shadow_dab_ensemble_manip",
+                "F164: DAB+ Ensemble Manipulation",
+            ),
+            ("shadow_eas_same_inject", "F165: SAME/EAS Header Injection"),
+            ("shadow_wea_cmas_inject", "F166: WEA/CMAS Cell Broadcast"),
+            (
+                "shadow_fronthaul_mitm_inject",
+                "F168: Fronthaul MitM Injection",
+            ),
+            (
+                "shadow_f1ap_cu_du_exploit",
+                "F170: CU/DU Split Exploitation",
+            ),
+            ("shadow_ais_position_spoof", "F171: AIS Position Spoofing"),
+        ];
+
+        for (name, desc) in &tc_rf {
+            if let Some(prog) = bpf.program_mut(name) {
+                let tc: &mut SchedClassifier = prog.try_into()?;
+                tc.load()?;
+                info!(
+                    "{} loaded (attach to {}/{} manually)",
+                    desc, cli.sdr_iface, cli.fronthaul_iface
+                );
+            }
+        }
+    }
+
+    // ── Event loop (ring buffer) ─────────────────────────────────────────────
+    let events_map = bpf
+        .take_map("EVENTS")
+        .context("EVENTS map not found in eBPF object")?;
+    let mut ring_buf =
+        RingBuf::try_from(events_map).context("failed to open EVENTS ring buffer")?;
+
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<EventHeader>(1024);
+    let rb_running = running.clone();
+
+    tokio::task::spawn_blocking(move || {
+        while rb_running.load(Ordering::Relaxed) {
+            while let Some(item) = ring_buf.next() {
+                let ptr = item.as_ptr() as *const EventHeader;
+                let header = unsafe { ptr.read_unaligned() };
+                if event_tx.blocking_send(header).is_err() {
+                    return;
                 }
             }
-        });
-    }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
+
+    tokio::spawn(async move {
+        while let Some(header) = event_rx.recv().await {
+            info!(
+                "EVENT type={} pid={} ts={}",
+                header.event_type, header.pid, header.timestamp_ns
+            );
+        }
+    });
 
     info!("StaticZero Offense Engine running. Press Ctrl+C to stop.");
     signal::ctrl_c().await?;

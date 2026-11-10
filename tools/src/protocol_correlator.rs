@@ -384,9 +384,9 @@ async fn main() -> Result<()> {
                 match output_format.as_str() {
                     "json" => println!("{}", serde_json::to_string(&threat).expect("serialize")),
                     "csv" => println!(
-                        "{},{},{:.2},{:?},\"{}\"",
+                        "{},{:?},{:.2},{:?},\"{}\"",
                         threat.threat_id,
-                        format!("{:?}", threat.category),
+                        threat.category,
                         threat.confidence,
                         threat.severity,
                         threat.description

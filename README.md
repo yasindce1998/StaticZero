@@ -25,7 +25,7 @@ staticzero/
 └── scripts/          # Lab automation
 ```
 
-## Offensive Capabilities (F89–F134)
+## Offensive Capabilities (F89–F172)
 
 ### Core Telecom Interception (F89–F100)
 
@@ -93,7 +93,110 @@ staticzero/
 | 133 | GPS L1 C/A Code Spoofing | XDP on SDR iface | L1 1575.42 MHz PRN code replicas |
 | 134 | Multi-Constellation L5/E5 Spoofing | XDP on SDR iface | GPS L5 + Galileo E5a/b + BeiDou B2a |
 
-## Defensive Capabilities (Modules 16–39)
+### TETRA/P25 Public Safety LMR (F135–F138)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 135 | TETRA Air Interface Intercept | kprobe: `sdr_rx_callback` | π/4-DQPSK bursts, TEA1 backdoor (CVE-2022-24400) |
+| 136 | TETRA Encryption Downgrade | TC classifier | SYSINFO encryption indicator → SCK/DCK fallback |
+| 137 | P25 Control Channel Harvest | kprobe: `sdr_rx_callback` | Phase I/II trunking, TGID/WACN/NAC mapping |
+| 138 | P25 IMBE Voice Interception | XDP on SDR iface | Unencrypted IMBE voice frames |
+
+### Bluetooth/BLE (F139–F142)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 139 | BLE GATT Enumeration | kprobe: `hci_send_frame` | Service/characteristic discovery dumps |
+| 140 | BLE Pairing Downgrade | kprobe: `smp_send_cmd` | LE Secure Connections → LE Legacy |
+| 141 | BlueBorne-style RCE Probe | kprobe: `l2cap_recv_frame` | Malformed L2CAP PDUs |
+| 142 | BLE Advertisement Spoofing | TC classifier | iBeacon/Eddystone impersonation |
+
+### Zigbee/Z-Wave/Thread (F143–F145)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 143 | Zigbee Network Key Sniff | kprobe: `sdr_rx_callback` | Transport key during join/ZLL touchlink |
+| 144 | Z-Wave S0 Key Extraction | kprobe: `sdr_rx_callback` | Zero temporary key in S0 inclusion |
+| 145 | Thread/6LoWPAN MLE Exploit | TC on WPAN iface | MLE injection, leader election manipulation |
+
+### LoRa/LoRaWAN (F146–F148)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 146 | LoRaWAN Join Replay | kprobe: `sdr_rx_callback` | DevNonce reuse in OTAA join |
+| 147 | LoRaWAN ABP Session Hijack | XDP on SDR iface | DevAddr spoof, frame counter desync |
+| 148 | LoRa PHY Jamming/Capture | kprobe: `sdr_rx_callback` | CSS chirp selective jamming by SF |
+
+### NB-IoT/LTE-M (F149–F150)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 149 | NB-IoT RRC/NAS Exploit | kprobe: `qmi_wwan_rx_fixup` | NPSS/NSSS, pre-security NAS |
+| 150 | LTE-M eDRX/PSM Timing Attack | TC on modem iface | Paging occasion prediction |
+
+### WiFi 802.11 (F151–F155)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 151 | Deauth/Disassoc Flood | TC on WLAN iface | Management frames (subtypes 10/12) |
+| 152 | WPA3 Dragonblood Exploit | kprobe: `cfg80211_rx_mgmt` | SAE side-channels, group downgrade |
+| 153 | Evil Twin/Karma Attack | kprobe: `cfg80211_rx_mgmt` | Probe request/response abuse |
+| 154 | FT Roaming Abuse | TC on WLAN iface | 802.11r PMKR1 extraction |
+| 155 | PMKID Capture | kprobe: `cfg80211_rx_mgmt` | RSN IE in EAPOL-1 |
+
+### Remote Keyless Entry (F156–F157)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 156 | RollJam Rolling Code Attack | kprobe: `sdr_rx_callback` | OOK/FSK at 315/433 MHz |
+| 157 | Relay/Amplification Attack | XDP on SDR iface | 125 kHz wake + UHF response relay |
+
+### Drone/UAV C2 (F158–F160)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 158 | MAVLink Command Injection | TC on UAV iface | Unsigned SET_MODE/NAV_WAYPOINT commands |
+| 159 | DJI OcuSync Fingerprint | kprobe: `sdr_rx_callback` | DroneID beacons, operator location |
+| 160 | FPV Video Link Intercept | XDP on SDR iface | 5.8 GHz analog/digital FPV + OSD telemetry |
+
+### POCSAG/FLEX Paging (F161–F162)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 161 | POCSAG Message Decode | kprobe: `sdr_rx_callback` | 512/1200/2400 baud FSK, RIC + messages |
+| 162 | FLEX/ReFLEX Intercept | kprobe: `sdr_rx_callback` | 4-FSK 1600/3200/6400 baud |
+
+### RDS/DAB+ Broadcast (F163–F164)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 163 | FM RDS Injection | TC on SDR iface | 57 kHz subcarrier, RadioText/TMC spoofing |
+| 164 | DAB+ Ensemble Manipulation | TC on SDR iface | FIC/FIG reconfiguration |
+
+### EAS/WEA Emergency Alert (F165–F166)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 165 | SAME/EAS Header Injection | TC on SDR iface | 1050 Hz AFSK, spoofed originator codes |
+| 166 | WEA/CMAS Cell Broadcast | TC on modem iface | SIB12 Presidential-level alerts |
+
+### O-RAN Fronthaul (F167–F170)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 167 | eCPRI IQ Sample Intercept | XDP on fronthaul iface | Unencrypted O-RU↔O-DU IQ plane |
+| 168 | Fronthaul MitM Injection | TC on fronthaul iface | Beamforming weight tampering |
+| 169 | O-RAN xApp Exploitation | kprobe: `tcp_sendmsg` | E2/A1 rogue xApp registration |
+| 170 | CU/DU Split Exploitation | TC (SCTP:38472) | F1AP UE context theft |
+
+### AIS Maritime (F171–F172)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 171 | AIS Position Spoofing | TC on SDR iface | 161.975/162.025 MHz GMSK, phantom vessels |
+| 172 | AIS Collision Avoidance Abuse | kprobe: `sdr_rx_callback` | Ghost tracks triggering CPA/TCPA alarms |
+
+## Defensive Capabilities (Modules 16–55)
 
 ### Basic Telecom Detection (16–23)
 
@@ -139,17 +242,73 @@ staticzero/
 | 38 | Aviation/Maritime Signal Integrity | ADS-B physics violations, unauthorized ACARS source IDs, false SARSAT beacons |
 | 39 | GNSS Spoofing Detection | C/N0 anomalies (meaconing), cross-constellation timing divergence, code-phase jumps |
 
+### Public Safety LMR Defense (40–41)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 40 | TETRA Encryption Monitor | TEA cipher downgrades, SYSINFO encryption=0, DCK fallback (TETRA:BURST CVEs) |
+| 41 | P25 Control Channel Integrity | Rogue NAC, unexpected system/WACN ID changes |
+
+### IoT Radio Defense (42–45)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 42 | BLE Pairing/Scanning Defense | LE Legacy downgrade, GATT enumeration floods, BlueBorne L2CAP patterns |
+| 43 | Zigbee/Z-Wave Key Provisioning Monitor | Unprotected transport keys, Z-Wave S0 zero-key inclusion, ZLL touchlink |
+| 44 | LoRaWAN Join Integrity | DevNonce replay, ABP frame counter reset, DevAddr collisions |
+| 45 | NB-IoT/LTE-M RRC Anomaly | RRC rate spikes, NAS without security context, abnormal paging |
+
+### WiFi Defense (46–47)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 46 | WiFi Deauth/Disassoc Detection | Management frame floods (>10/s per BSSID), AP impersonation |
+| 47 | WPA3/FT Integrity Monitor | SAE group downgrade, anti-clogging floods, commit/confirm timing anomalies |
+
+### RF Control Defense (48–49)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 48 | RKE Jamming Detection | Sustained 315/433 MHz energy with fob transmit failure (RollJam) |
+| 49 | UAV C2 Integrity Monitor | Unsigned MAVLink commands, unauthorized DroneID serials, GCS mismatch |
+
+### Broadcast/Paging Defense (50–52)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 50 | Pager Signal Anomaly | Unknown RICs, off-schedule bursts, baud rate changes |
+| 51 | Broadcast Injection Detection | RDS PI code changes, unauthorized DAB+ FIG sources |
+| 52 | Emergency Alert Spoofing Detection | Invalid SAME originator/event codes, unauthorized WEA in SIB12 |
+
+### O-RAN Defense (53–54)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 53 | O-RAN Fronthaul Integrity | eCPRI sequence gaps, IQ amplitude violations, timing >±65ns (WG4) |
+| 54 | O-RAN RIC Security Monitor | Rogue xApp registration, A1 policy injection, O1 window violations |
+
+### AIS Maritime Defense (55)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 55 | AIS Signal Integrity | Physics violations (>50kn, impossible turn rates), position jumps, duplicate MMSI |
+
 ## Correlation Engine
 
 Cross-layer protocol correlation detects complex attack chains that single-module detection would miss. The `TelecomCorrelationEngine` ingests alerts from all modules and identifies compound threats across seven protocol layers (Radio, NAS, Transport, Signaling, Core, SBI, Satellite).
 
-Threat categories: IMSI Catching, MitM, Protocol Downgrade, Signaling Abuse, Toll Fraud, Location Tracking, Data Interception, Service Denial, Slice Escape, Roaming Exploit, SBI Compromise, Handover Hijack, RAN Sharing Breach, Signaling Storm, Identity Exposure, Satellite Link Hijack, GNSS Spoofing, Beacon Falsification, Terminal Compromise.
+Threat categories: IMSI Catching, MitM, Protocol Downgrade, Signaling Abuse, Toll Fraud, Location Tracking, Data Interception, Service Denial, Slice Escape, Roaming Exploit, SBI Compromise, Handover Hijack, RAN Sharing Breach, Signaling Storm, Identity Exposure, Satellite Link Hijack, GNSS Spoofing, Beacon Falsification, Terminal Compromise, WiFi Rogue AP, Fronthaul Compromise, AIS Spoofing.
 
 Satellite-specific correlation patterns:
 - DVB-S2 anomaly + VSAT integrity failure → coordinated transponder takeover
 - GNSS spoofing + ADS-B injection → aviation-targeted multi-vector attack
 - Starlink auth + LEO signaling anomaly → terminal impersonation chain
 - NTN timing divergence + NAS replay → satellite-terrestrial positioning attack
+
+RF protocol domain correlation patterns:
+- WiFi deauth flood + WPA3/FT integrity failure → rogue AP / evil twin attack
+- eCPRI fronthaul anomaly + RIC security violation → coordinated O-RAN compromise (confidence 0.93, severity 5)
+- AIS physics violation + GNSS spoofing → maritime position falsification (confidence 0.94, severity 5)
 
 ## Tools
 
@@ -202,6 +361,10 @@ sudo ./target/release/staticzero-offense --enable-telecom --gtp-iface gtp0
 # Run with satellite modules
 sudo ./target/release/staticzero-defense --satellite_defense
 sudo ./target/release/staticzero-offense --enable-satellite --sat-iface sat0
+
+# Run with RF protocol domain modules (TETRA/P25, BLE, Zigbee, LoRaWAN, WiFi, RKE, UAV, paging, broadcast, O-RAN, AIS)
+sudo ./target/release/staticzero-defense --rf_defense
+sudo ./target/release/staticzero-offense --enable-rf --sdr-iface sdr0 --fronthaul-iface eth0
 ```
 
 ## License

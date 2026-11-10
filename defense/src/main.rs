@@ -4,15 +4,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
-use aya::maps::AsyncPerfEventArray;
+use aya::maps::RingBuf;
 use aya::programs::KProbe;
-use aya::util::online_cpus;
 use aya::BpfLoader;
-use bytes::BytesMut;
 use clap::Parser;
 use tokio::signal;
 use tokio::sync::{mpsc, watch, Mutex, RwLock};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use common::DefenseAlert;
@@ -56,6 +54,10 @@ struct Cli {
     /// Enable satellite defense modules (33-39)
     #[arg(long)]
     satellite_defense: bool,
+
+    /// Enable RF protocol domain defense modules (40-55)
+    #[arg(long)]
+    rf_defense: bool,
 
     /// Enable all detection modules
     #[arg(long)]
@@ -184,6 +186,7 @@ async fn main() -> Result<()> {
     let enable_advanced = cli.all || cli.telecom_advanced;
     let enable_5g_defense = cli.all || cli.telecom_5g_defense;
     let enable_satellite = cli.all || cli.satellite_defense;
+    let enable_rf_defense = cli.all || cli.rf_defense;
 
     if enable_telecom {
         let probes = [
@@ -316,6 +319,66 @@ async fn main() -> Result<()> {
         }
     }
 
+    if enable_rf_defense {
+        let probes_rf = [
+            (
+                "detect_tetra_encryption",
+                "Module 40: TETRA Encryption Monitor",
+            ),
+            (
+                "detect_p25_control",
+                "Module 41: P25 Control Channel Integrity",
+            ),
+            (
+                "detect_ble_pairing",
+                "Module 42: BLE Pairing/Scanning Defense",
+            ),
+            (
+                "detect_zigbee_key",
+                "Module 43: Zigbee/Z-Wave Key Provisioning Monitor",
+            ),
+            ("detect_lorawan_join", "Module 44: LoRaWAN Join Integrity"),
+            ("detect_nbiot_rrc", "Module 45: NB-IoT/LTE-M RRC Anomaly"),
+            (
+                "detect_wifi_deauth",
+                "Module 46: WiFi Deauth/Disassoc Detection",
+            ),
+            (
+                "detect_wpa3_integrity",
+                "Module 47: WPA3/FT Integrity Monitor",
+            ),
+            ("detect_rke_jamming", "Module 48: RKE Jamming Detection"),
+            ("detect_uav_c2", "Module 49: UAV C2 Integrity Monitor"),
+            ("detect_pager_anomaly", "Module 50: Pager Signal Anomaly"),
+            (
+                "detect_broadcast_injection",
+                "Module 51: Broadcast Injection Detection",
+            ),
+            (
+                "detect_eas_spoofing",
+                "Module 52: Emergency Alert Spoofing Detection",
+            ),
+            (
+                "detect_oran_fronthaul",
+                "Module 53: O-RAN Fronthaul Integrity",
+            ),
+            ("detect_oran_ric", "Module 54: O-RAN RIC Security Monitor"),
+            ("detect_ais_integrity", "Module 55: AIS Signal Integrity"),
+        ];
+
+        for (name, desc) in &probes_rf {
+            match bpf.program_mut(name) {
+                Some(prog) => {
+                    let kprobe: &mut KProbe = prog.try_into()?;
+                    kprobe.load()?;
+                    kprobe.attach(name.trim_start_matches("detect_"), 0)?;
+                    info!("{} enabled", desc);
+                }
+                None => warn!("{} not found in eBPF object, skipping", name),
+            }
+        }
+    }
+
     // ── Alert event loop with full integration ──────────────────────────────
     let mut correlation_engine = TelecomCorrelationEngine::new(correlation_window);
     let (alert_tx, mut alert_rx) = mpsc::channel::<DefenseAlert>(4096);
@@ -427,42 +490,28 @@ async fn main() -> Result<()> {
         }
     });
 
-    // ── Per-CPU perf event readers ──────────────────────────────────────────
-    let mut perf_array = AsyncPerfEventArray::try_from(
-        bpf.take_map("DEFENSE_ALERTS")
-            .context("DEFENSE_ALERTS map not found")?,
-    )?;
+    // ── Alert reader (ring buffer → correlation pipeline) ────────────────────
+    let alerts_map = bpf
+        .take_map("DEFENSE_ALERTS")
+        .context("DEFENSE_ALERTS map not found in eBPF object")?;
+    let mut ring_buf =
+        RingBuf::try_from(alerts_map).context("failed to open DEFENSE_ALERTS ring buffer")?;
 
-    let cpus = online_cpus().map_err(|e| anyhow::anyhow!("failed to get online CPUs: {}", e))?;
-    for cpu_id in cpus {
-        let mut buf = perf_array.open(cpu_id, None)?;
-        let running = running.clone();
-        let tx = alert_tx.clone();
+    let rb_tx = alert_tx.clone();
+    let rb_running = running.clone();
 
-        tokio::spawn(async move {
-            let mut buffers = (0..10)
-                .map(|_| BytesMut::with_capacity(std::mem::size_of::<DefenseAlert>()))
-                .collect::<Vec<_>>();
-
-            while running.load(Ordering::Relaxed) {
-                let events = match buf.read_events(&mut buffers).await {
-                    Ok(events) => events,
-                    Err(e) => {
-                        error!("Error reading perf events: {}", e);
-                        continue;
-                    }
-                };
-
-                for buf in buffers.iter().take(events.read) {
-                    let ptr = buf.as_ptr() as *const DefenseAlert;
-                    let alert = unsafe { ptr.read_unaligned() };
-                    if tx.send(alert).await.is_err() {
-                        return;
-                    }
+    tokio::task::spawn_blocking(move || {
+        while rb_running.load(Ordering::Relaxed) {
+            while let Some(item) = ring_buf.next() {
+                let ptr = item.as_ptr() as *const DefenseAlert;
+                let alert = unsafe { ptr.read_unaligned() };
+                if rb_tx.blocking_send(alert).is_err() {
+                    return;
                 }
             }
-        });
-    }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    });
     drop(alert_tx);
 
     info!("StaticZero Defense Engine running. Press Ctrl+C to stop.");

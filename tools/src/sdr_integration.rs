@@ -391,10 +391,10 @@ fn earfcn_to_freq(earfcn: u32) -> u64 {
     // Simplified LTE EARFCN to frequency mapping (Band 7 example)
     // Full table: 3GPP TS 36.101 Table 5.7.3-1
     match earfcn {
-        2750..=3449 => 2620_000_000 + (earfcn as u64 - 2750) * 100_000, // Band 7 DL
-        1200..=1949 => 1805_000_000 + (earfcn as u64 - 1200) * 100_000, // Band 3 DL
-        0..=599 => 2110_000_000 + earfcn as u64 * 100_000,              // Band 1 DL
-        _ => earfcn as u64 * 100_000,                                     // Fallback
+        2750..=3449 => 2_620_000_000 + (earfcn as u64 - 2750) * 100_000, // Band 7 DL
+        1200..=1949 => 1_805_000_000 + (earfcn as u64 - 1200) * 100_000, // Band 3 DL
+        0..=599 => 2_110_000_000 + earfcn as u64 * 100_000,              // Band 1 DL
+        _ => earfcn as u64 * 100_000,                                    // Fallback
     }
 }
 

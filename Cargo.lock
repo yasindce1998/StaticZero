@@ -1497,7 +1497,7 @@ dependencies = [
 
 [[package]]
 name = "staticzero-common"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aya-ebpf",
  "serde",
@@ -1505,7 +1505,7 @@ dependencies = [
 
 [[package]]
 name = "staticzero-defense"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1531,7 +1531,7 @@ dependencies = [
 
 [[package]]
 name = "staticzero-defense-ebpf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aya-ebpf",
  "staticzero-common",
@@ -1539,7 +1539,7 @@ dependencies = [
 
 [[package]]
 name = "staticzero-offense"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "aya 0.12.0",
@@ -1554,7 +1554,7 @@ dependencies = [
 
 [[package]]
 name = "staticzero-offense-ebpf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "aya-ebpf",
  "staticzero-common",
@@ -1562,7 +1562,7 @@ dependencies = [
 
 [[package]]
 name = "staticzero-tools"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2069,7 +2069,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",

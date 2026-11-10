@@ -111,6 +111,62 @@ pub const EVENT_GNSS_L1_SPOOF: u32 = 203;
 pub const EVENT_GNSS_L5_SPOOF: u32 = 204;
 
 // ══════════════════════════════════════════════════════════════════════════════
+// RF Protocol Domain Event Constants — Offense (Features 135-172)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// TETRA/P25 — Public Safety LMR (F135-F138)
+pub const EVENT_TETRA_INTERCEPT: u32 = 205;
+pub const EVENT_TETRA_DOWNGRADE: u32 = 206;
+pub const EVENT_P25_CONTROL_HARVEST: u32 = 207;
+pub const EVENT_P25_IMBE_INTERCEPT: u32 = 208;
+// Bluetooth/BLE (F139-F142)
+pub const EVENT_BLE_GATT_ENUM: u32 = 209;
+pub const EVENT_BLE_PAIRING_DOWNGRADE: u32 = 210;
+pub const EVENT_BLUEBORNE_PROBE: u32 = 211;
+pub const EVENT_BLE_ADV_SPOOF: u32 = 212;
+// Zigbee/Z-Wave/Thread (F143-F145)
+pub const EVENT_ZIGBEE_KEY_SNIFF: u32 = 213;
+pub const EVENT_ZWAVE_S0_EXTRACT: u32 = 214;
+pub const EVENT_THREAD_MLE_EXPLOIT: u32 = 215;
+// LoRa/LoRaWAN (F146-F148)
+pub const EVENT_LORAWAN_JOIN_REPLAY: u32 = 216;
+pub const EVENT_LORAWAN_ABP_HIJACK: u32 = 217;
+pub const EVENT_LORA_PHY_JAM: u32 = 218;
+// NB-IoT/LTE-M (F149-F150)
+pub const EVENT_NBIOT_RRC_EXPLOIT: u32 = 219;
+pub const EVENT_LTEM_EDRX_TIMING: u32 = 220;
+// WiFi 802.11 (F151-F155)
+pub const EVENT_WIFI_DEAUTH_FLOOD: u32 = 221;
+pub const EVENT_WPA3_DRAGONBLOOD: u32 = 222;
+pub const EVENT_EVIL_TWIN_KARMA: u32 = 223;
+pub const EVENT_FT_ROAMING_ABUSE: u32 = 224;
+pub const EVENT_PMKID_CAPTURE: u32 = 225;
+// Remote Keyless Entry (F156-F157)
+pub const EVENT_ROLLJAM_ATTACK: u32 = 226;
+pub const EVENT_RKE_RELAY_ATTACK: u32 = 227;
+// Drone/UAV C2 (F158-F160)
+pub const EVENT_MAVLINK_INJECT: u32 = 228;
+pub const EVENT_DJI_DRONEID_FINGERPRINT: u32 = 229;
+pub const EVENT_FPV_VIDEO_INTERCEPT: u32 = 230;
+// POCSAG/FLEX Paging (F161-F162)
+pub const EVENT_POCSAG_DECODE: u32 = 231;
+pub const EVENT_FLEX_INTERCEPT: u32 = 232;
+// RDS/DAB+ Broadcast (F163-F164)
+pub const EVENT_RDS_INJECT: u32 = 233;
+pub const EVENT_DAB_ENSEMBLE_MANIP: u32 = 234;
+// EAS/WEA Emergency Alert (F165-F166)
+pub const EVENT_EAS_SAME_INJECT: u32 = 235;
+pub const EVENT_WEA_CMAS_INJECT: u32 = 236;
+// O-RAN Fronthaul (F167-F170)
+pub const EVENT_ECPRI_IQ_INTERCEPT: u32 = 237;
+pub const EVENT_FRONTHAUL_MITM_INJECT: u32 = 238;
+pub const EVENT_ORAN_XAPP_EXPLOIT: u32 = 239;
+pub const EVENT_F1AP_CU_DU_EXPLOIT: u32 = 240;
+// AIS Maritime (F171-F172)
+pub const EVENT_AIS_POSITION_SPOOF: u32 = 241;
+pub const EVENT_AIS_CPA_ABUSE: u32 = 242;
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Telecom Defense Alert Constants
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -143,6 +199,34 @@ pub const ALERT_VSAT_INTEGRITY: u32 = 39;
 pub const ALERT_STARLINK_AUTH: u32 = 40;
 pub const ALERT_AVIATION_INTEGRITY: u32 = 41;
 pub const ALERT_GNSS_SPOOFING: u32 = 42;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RF Protocol Domain Alert Constants (Modules 40-55)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Public Safety LMR Defense (Modules 40-41)
+pub const ALERT_TETRA_ENCRYPTION: u32 = 43;
+pub const ALERT_P25_CONTROL: u32 = 44;
+// IoT Radio Defense (Modules 42-45)
+pub const ALERT_BLE_PAIRING: u32 = 45;
+pub const ALERT_ZIGBEE_KEY: u32 = 46;
+pub const ALERT_LORAWAN_JOIN: u32 = 47;
+pub const ALERT_NBIOT_RRC: u32 = 48;
+// WiFi Defense (Modules 46-47)
+pub const ALERT_WIFI_DEAUTH: u32 = 49;
+pub const ALERT_WPA3_INTEGRITY: u32 = 50;
+// RF Control Defense (Modules 48-49)
+pub const ALERT_RKE_JAMMING: u32 = 51;
+pub const ALERT_UAV_C2: u32 = 52;
+// Broadcast/Paging Defense (Modules 50-52)
+pub const ALERT_PAGER_ANOMALY: u32 = 53;
+pub const ALERT_BROADCAST_INJECTION: u32 = 54;
+pub const ALERT_EAS_SPOOFING: u32 = 55;
+// O-RAN Defense (Modules 53-54)
+pub const ALERT_ORAN_FRONTHAUL: u32 = 56;
+pub const ALERT_ORAN_RIC: u32 = 57;
+// AIS Maritime Defense (Module 55)
+pub const ALERT_AIS_INTEGRITY: u32 = 58;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Telecom Structs (eBPF map values)
@@ -569,6 +653,176 @@ pub struct AdsbAircraftState {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// RF Protocol Domain Structs (Features 135-172, Modules 40-55)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// TETRA/P25 land mobile radio state (F135-F138, Modules 40-41)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LmrRadioState {
+    pub nac: u16,        // P25 Network Access Code
+    pub wacn: u16,       // P25 Wide Area Communication Network ID (low 16 bits)
+    pub color_code: u16, // TETRA color code
+    pub mcc: u16,        // TETRA Mobile Country Code
+    pub system_id: u32,  // P25 system ID
+    pub tgid: u32,       // P25 Talk Group ID
+    pub cipher: u32,     // TEA cipher suite in use (0=clear, 1=TEA1, 2=TEA2, 3=TEA3)
+    pub timestamp_ns: u64,
+}
+
+/// Baseline for LMR defense modules (Modules 40-41)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LmrBaseline {
+    pub expected_cipher: u32,
+    pub expected_nac: u32,
+    pub expected_wacn: u32,
+    pub expected_system_id: u32,
+    pub _pad: u32,
+}
+
+/// Bluetooth/BLE link state (F139-F142, Module 42)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct BleLinkState {
+    pub conn_handle: u32,
+    pub pairing_mode: u32, // 0=LE Legacy, 1=LE Secure Connections
+    pub addr_hash: u32,
+    pub gatt_handle_count: u32,
+    pub l2cap_len: u32,
+    pub _pad: u32,
+    pub timestamp_ns: u64,
+}
+
+/// Zigbee/Z-Wave/Thread WPAN network state (F143-F145, Module 43)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct WpanNetworkState {
+    pub pan_id: u16,
+    pub protocol: u8, // 0=zigbee, 1=z-wave, 2=thread
+    pub _pad: u8,
+    pub channel: u16,
+    pub join_count: u16,
+    pub key_hash: u32,
+    pub timestamp_ns: u64,
+}
+
+/// LoRaWAN session state (F146-F148, Module 44)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LoRaSessionState {
+    pub dev_addr: u32,
+    pub dev_nonce: u16,
+    pub spreading_factor: u8,
+    pub activation: u8, // 0=OTAA, 1=ABP
+    pub fcnt_up: u32,
+    pub fcnt_down: u32,
+    pub timestamp_ns: u64,
+}
+
+/// WiFi 802.11 client/AP state (F151-F155, Modules 46-47)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct WifiClientState {
+    pub bssid_hash: u32,
+    pub ssid_hash: u32,
+    pub client_addr_hash: u32,
+    pub deauth_count: u32,
+    pub mgmt_subtype: u32,
+    pub _pad: u32,
+    pub timestamp_ns: u64,
+}
+
+/// Remote keyless entry fob state (F156-F157, Module 48)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct RkeFobState {
+    pub fob_id: u32,
+    pub frequency_khz: u32, // 315000 or 433920
+    pub code_count: u32,
+    pub last_code: u32,
+    pub _pad: u32,
+    pub timestamp_ns: u64,
+}
+
+/// UAV command-and-control link state (F158-F160, Module 49)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct UavLinkState {
+    pub sys_id: u8,  // MAVLink system ID
+    pub comp_id: u8, // MAVLink component ID
+    pub msg_id: u16, // MAVLink message ID
+    pub signed: u8,  // 1 if MAVLink v2 signing present
+    pub _pad: [u8; 3],
+    pub serial_hash: u32, // DJI DroneID serial hash
+    pub gcs_addr_hash: u32,
+    pub timestamp_ns: u64,
+}
+
+/// POCSAG/FLEX pager message state (F161-F162, Module 50)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct PagerMessageState {
+    pub ric: u32, // Radio Identity Code / FLEX capcode
+    pub function_code: u32,
+    pub baud: u32,     // 512/1200/2400 POCSAG, 1600/3200/6400 FLEX
+    pub protocol: u32, // 0=POCSAG, 1=FLEX
+    pub msg_hash: u32,
+    pub _pad: u32,
+    pub timestamp_ns: u64,
+}
+
+/// RDS/DAB+/EAS broadcast injection state (F163-F166, Modules 51-52)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct BroadcastInjectState {
+    pub pi_code: u16,  // RDS Programme Identification
+    pub fig_type: u16, // DAB+ Fast Information Group type
+    pub service_hash: u32,
+    pub originator: u32, // SAME originator code
+    pub event_code: u32, // SAME/WEA event code
+    pub timestamp_ns: u64,
+}
+
+/// eCPRI/O-RAN fronthaul state (F167-F170, Modules 53-54)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct EcpriFronthaulState {
+    pub seq_num: u32,
+    pub pc_id: u16,   // eCPRI PC_ID / antenna-carrier ID
+    pub msg_type: u8, // eCPRI message type (0=IQ data plane)
+    pub _pad: u8,
+    pub iq_amplitude: u32, // peak IQ magnitude observed
+    pub timestamp_ns: u64,
+}
+
+/// O-RAN Near-RT RIC / E2 state (F169, Module 54)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct OranRicState {
+    pub xapp_id: u32,
+    pub e2_node_id: u32,
+    pub subscription_hash: u32,
+    pub policy_id: u32, // A1 policy ID
+    pub _pad: u32,
+    pub timestamp_ns: u64,
+}
+
+/// AIS vessel tracking state (F171-F172, Module 55)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AisVesselState {
+    pub mmsi: u32,
+    pub lat_deg: i32, // position, degrees
+    pub lon_deg: i32,
+    pub sog_tenths: u16, // speed over ground (0.1 kn units)
+    pub cog_tenths: u16, // course over ground (0.1 deg units)
+    pub msg_type: u8,    // AIS message type (1-3 position, 18 Class B)
+    pub _pad: [u8; 3],
+    pub timestamp_ns: u64,
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Pod trait — required for eBPF map value types
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -614,6 +868,19 @@ unsafe impl Pod for GnssSignalState {}
 unsafe impl Pod for NtnTimingState {}
 unsafe impl Pod for StarlinkSessionState {}
 unsafe impl Pod for AdsbAircraftState {}
+unsafe impl Pod for LmrRadioState {}
+unsafe impl Pod for LmrBaseline {}
+unsafe impl Pod for BleLinkState {}
+unsafe impl Pod for WpanNetworkState {}
+unsafe impl Pod for LoRaSessionState {}
+unsafe impl Pod for WifiClientState {}
+unsafe impl Pod for RkeFobState {}
+unsafe impl Pod for UavLinkState {}
+unsafe impl Pod for PagerMessageState {}
+unsafe impl Pod for BroadcastInjectState {}
+unsafe impl Pod for EcpriFronthaulState {}
+unsafe impl Pod for OranRicState {}
+unsafe impl Pod for AisVesselState {}
 
 #[cfg(test)]
 mod tests {
@@ -700,6 +967,44 @@ mod tests {
             EVENT_SARSAT_BEACON_SPOOF,
             EVENT_GNSS_L1_SPOOF,
             EVENT_GNSS_L5_SPOOF,
+            EVENT_TETRA_INTERCEPT,
+            EVENT_TETRA_DOWNGRADE,
+            EVENT_P25_CONTROL_HARVEST,
+            EVENT_P25_IMBE_INTERCEPT,
+            EVENT_BLE_GATT_ENUM,
+            EVENT_BLE_PAIRING_DOWNGRADE,
+            EVENT_BLUEBORNE_PROBE,
+            EVENT_BLE_ADV_SPOOF,
+            EVENT_ZIGBEE_KEY_SNIFF,
+            EVENT_ZWAVE_S0_EXTRACT,
+            EVENT_THREAD_MLE_EXPLOIT,
+            EVENT_LORAWAN_JOIN_REPLAY,
+            EVENT_LORAWAN_ABP_HIJACK,
+            EVENT_LORA_PHY_JAM,
+            EVENT_NBIOT_RRC_EXPLOIT,
+            EVENT_LTEM_EDRX_TIMING,
+            EVENT_WIFI_DEAUTH_FLOOD,
+            EVENT_WPA3_DRAGONBLOOD,
+            EVENT_EVIL_TWIN_KARMA,
+            EVENT_FT_ROAMING_ABUSE,
+            EVENT_PMKID_CAPTURE,
+            EVENT_ROLLJAM_ATTACK,
+            EVENT_RKE_RELAY_ATTACK,
+            EVENT_MAVLINK_INJECT,
+            EVENT_DJI_DRONEID_FINGERPRINT,
+            EVENT_FPV_VIDEO_INTERCEPT,
+            EVENT_POCSAG_DECODE,
+            EVENT_FLEX_INTERCEPT,
+            EVENT_RDS_INJECT,
+            EVENT_DAB_ENSEMBLE_MANIP,
+            EVENT_EAS_SAME_INJECT,
+            EVENT_WEA_CMAS_INJECT,
+            EVENT_ECPRI_IQ_INTERCEPT,
+            EVENT_FRONTHAUL_MITM_INJECT,
+            EVENT_ORAN_XAPP_EXPLOIT,
+            EVENT_F1AP_CU_DU_EXPLOIT,
+            EVENT_AIS_POSITION_SPOOF,
+            EVENT_AIS_CPA_ABUSE,
         ];
         for i in 0..offense_events.len() {
             for j in (i + 1)..offense_events.len() {
@@ -739,6 +1044,22 @@ mod tests {
             ALERT_STARLINK_AUTH,
             ALERT_AVIATION_INTEGRITY,
             ALERT_GNSS_SPOOFING,
+            ALERT_TETRA_ENCRYPTION,
+            ALERT_P25_CONTROL,
+            ALERT_BLE_PAIRING,
+            ALERT_ZIGBEE_KEY,
+            ALERT_LORAWAN_JOIN,
+            ALERT_NBIOT_RRC,
+            ALERT_WIFI_DEAUTH,
+            ALERT_WPA3_INTEGRITY,
+            ALERT_RKE_JAMMING,
+            ALERT_UAV_C2,
+            ALERT_PAGER_ANOMALY,
+            ALERT_BROADCAST_INJECTION,
+            ALERT_EAS_SPOOFING,
+            ALERT_ORAN_FRONTHAUL,
+            ALERT_ORAN_RIC,
+            ALERT_AIS_INTEGRITY,
         ];
         for i in 0..alerts.len() {
             for j in (i + 1)..alerts.len() {
@@ -754,9 +1075,9 @@ mod tests {
     #[test]
     fn event_and_alert_ranges_dont_overlap() {
         let min_event = EVENT_AT_CMD_INJECT;
-        let max_event = EVENT_GNSS_L5_SPOOF;
+        let max_event = EVENT_AIS_CPA_ABUSE;
         let min_alert = ALERT_ROGUE_TOWER;
-        let max_alert = ALERT_GNSS_SPOOFING;
+        let max_alert = ALERT_AIS_INTEGRITY;
         assert!(
             max_alert < min_event || max_event < min_alert,
             "Event range [{min_event},{max_event}] overlaps alert range [{min_alert},{max_alert}]"
@@ -781,6 +1102,23 @@ mod tests {
         assert_eq!(mem::size_of::<NtnTimingState>(), 24);
         assert_eq!(mem::size_of::<StarlinkSessionState>(), 40);
         assert_eq!(mem::size_of::<AdsbAircraftState>(), 32);
+    }
+
+    #[test]
+    fn rf_domain_struct_sizes() {
+        assert_eq!(mem::size_of::<LmrRadioState>(), 32);
+        assert_eq!(mem::size_of::<LmrBaseline>(), 20);
+        assert_eq!(mem::size_of::<BleLinkState>(), 32);
+        assert_eq!(mem::size_of::<WpanNetworkState>(), 24);
+        assert_eq!(mem::size_of::<LoRaSessionState>(), 24);
+        assert_eq!(mem::size_of::<WifiClientState>(), 32);
+        assert_eq!(mem::size_of::<RkeFobState>(), 32);
+        assert_eq!(mem::size_of::<UavLinkState>(), 24);
+        assert_eq!(mem::size_of::<PagerMessageState>(), 32);
+        assert_eq!(mem::size_of::<BroadcastInjectState>(), 24);
+        assert_eq!(mem::size_of::<EcpriFronthaulState>(), 24);
+        assert_eq!(mem::size_of::<OranRicState>(), 32);
+        assert_eq!(mem::size_of::<AisVesselState>(), 32);
     }
 
     #[test]

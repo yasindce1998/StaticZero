@@ -9,14 +9,18 @@ use aya_ebpf::{
     programs::ProbeContext,
 };
 use common::{
-    CellBaseline, CellInfo, DefenseAlert, HandoverBaseline, RanSharingState, RfFingerprint,
-    SbiBaseline, SignalingCounter, ALERT_AVIATION_INTEGRITY, ALERT_CELL_ANOMALY,
-    ALERT_DOWNGRADE_ATTACK, ALERT_DVBS2_ANOMALY, ALERT_ESIM_TAMPER, ALERT_GNSS_SPOOFING,
-    ALERT_GTP_ANOMALY, ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_LEO_SIGNALING,
-    ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_NTN_ANOMALY, ALERT_RAN_SHARING_LEAK,
-    ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY,
-    ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_STARLINK_AUTH,
-    ALERT_VOLTE_FRAUD, ALERT_VSAT_INTEGRITY,
+    AisVesselState, CellBaseline, CellInfo, DefenseAlert, HandoverBaseline, LmrBaseline,
+    RanSharingState, RfFingerprint, SbiBaseline, SignalingCounter, ALERT_AIS_INTEGRITY,
+    ALERT_AVIATION_INTEGRITY, ALERT_BLE_PAIRING, ALERT_BROADCAST_INJECTION, ALERT_CELL_ANOMALY,
+    ALERT_DOWNGRADE_ATTACK, ALERT_DVBS2_ANOMALY, ALERT_EAS_SPOOFING, ALERT_ESIM_TAMPER,
+    ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY, ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER,
+    ALERT_LEO_SIGNALING, ALERT_LORAWAN_JOIN, ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_NBIOT_RRC,
+    ALERT_NTN_ANOMALY, ALERT_ORAN_FRONTHAUL, ALERT_ORAN_RIC, ALERT_P25_CONTROL,
+    ALERT_PAGER_ANOMALY, ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT, ALERT_RKE_JAMMING,
+    ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM,
+    ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_STARLINK_AUTH, ALERT_TETRA_ENCRYPTION,
+    ALERT_UAV_C2, ALERT_VOLTE_FRAUD, ALERT_VSAT_INTEGRITY, ALERT_WIFI_DEAUTH, ALERT_WPA3_INTEGRITY,
+    ALERT_ZIGBEE_KEY,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -109,6 +113,61 @@ static ADSB_TRACK_HISTORY: HashMap<u32, u64> = HashMap::with_max_entries(128, 0)
 
 #[map]
 static GNSS_CN0_BASELINE: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// RF PROTOCOL DOMAIN DEFENSE MAPS (Modules 40-55)
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[map]
+static TETRA_CIPHER_BASELINE: HashMap<u32, LmrBaseline> = HashMap::with_max_entries(32, 0);
+
+#[map]
+static P25_CONTROL_BASELINE: HashMap<u32, u64> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static BLE_PAIRING_STATE: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static WPAN_JOIN_LOG: HashMap<u32, u64> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static LORAWAN_NONCE_LOG: HashMap<u64, u32> = HashMap::with_max_entries(128, 0);
+
+#[map]
+static LORAWAN_FCNT_LOG: HashMap<u32, u32> = HashMap::with_max_entries(128, 0);
+
+#[map]
+static NBIOT_RRC_RATE: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static WIFI_DEAUTH_RATE: HashMap<u64, u32> = HashMap::with_max_entries(128, 0);
+
+#[map]
+static WPA3_SAE_STATE: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static RKE_ENERGY_LOG: HashMap<u32, u64> = HashMap::with_max_entries(32, 0);
+
+#[map]
+static UAV_FLEET_AUTH: HashMap<u64, u64> = HashMap::with_max_entries(128, 0);
+
+#[map]
+static PAGER_RIC_LOG: HashMap<u32, u64> = HashMap::with_max_entries(128, 0);
+
+#[map]
+static BROADCAST_PI_LOG: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static EAS_ORIGINATOR_LOG: HashMap<u32, u32> = HashMap::with_max_entries(32, 0);
+
+#[map]
+static ECPRI_SEQ_TRACK: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static RIC_XAPP_LOG: HashMap<u64, u64> = HashMap::with_max_entries(64, 0);
+
+#[map]
+static AIS_VESSEL_TRACK: HashMap<u32, AisVesselState> = HashMap::with_max_entries(128, 0);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODULE 16: Rogue Tower Detection (Alert 19)
@@ -1579,6 +1638,1051 @@ fn try_detect_gnss_spoofing(ctx: &ProbeContext) -> Result<u32, i64> {
                 d[0..4].copy_from_slice(&prn_key.to_le_bytes());
                 d[4..8].copy_from_slice(&cn0.to_le_bytes());
                 d[8..12].copy_from_slice(&constellation.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 40: TETRA Encryption Monitor (Alert 43)
+// Detects TEA cipher downgrades and disabled encryption (TETRA:BURST).
+// Hook: kprobe on TETRA SYSINFO/cipher indication
+// ══════════════════════════════════════════════════════════════════════════════
+
+const TETRA_SYSINFO_DCK_FALLBACK: u32 = 2;
+
+#[kprobe]
+pub fn detect_tetra_encryption(ctx: ProbeContext) -> u32 {
+    try_detect_tetra_encryption(&ctx).unwrap_or_default()
+}
+
+fn try_detect_tetra_encryption(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let radio_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let cipher: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let sysinfo_enc: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+    let mut expected_cipher = 0u32;
+
+    if let Some(baseline) = unsafe { TETRA_CIPHER_BASELINE.get(&radio_id) } {
+        expected_cipher = baseline.expected_cipher;
+        // Cipher downgrade: TEA3=3 > TEA2=2 > TEA1=1 > clear=0
+        if cipher < baseline.expected_cipher {
+            anomaly = true;
+        }
+        // SYSINFO encryption indicator clear while encryption is expected
+        if sysinfo_enc == 0 && baseline.expected_cipher > 0 {
+            anomaly = true;
+        }
+    }
+
+    // DCK (Derived Cipher Key) fallback from SCK
+    if sysinfo_enc == TETRA_SYSINFO_DCK_FALLBACK {
+        anomaly = true;
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_TETRA_ENCRYPTION,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: radio_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&radio_id.to_le_bytes());
+                d[4..8].copy_from_slice(&cipher.to_le_bytes());
+                d[8..12].copy_from_slice(&sysinfo_enc.to_le_bytes());
+                d[12..16].copy_from_slice(&expected_cipher.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 41: P25 Control Channel Integrity (Alert 44)
+// Detects rogue NAC values and unexpected system ID changes.
+// Hook: kprobe on P25 control channel decoder
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[kprobe]
+pub fn detect_p25_control(ctx: ProbeContext) -> u32 {
+    try_detect_p25_control(&ctx).unwrap_or_default()
+}
+
+fn try_detect_p25_control(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let radio_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let nac: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let system_id: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    // Baseline packs NAC (high 32 bits) and system ID (low 32 bits)
+    let packed = ((nac as u64) << 32) | system_id as u64;
+    let mut anomaly = false;
+
+    if let Some(prev_packed) = unsafe { P25_CONTROL_BASELINE.get(&radio_id) } {
+        let prev_nac = (*prev_packed >> 32) as u32;
+        let prev_system_id = *prev_packed as u32;
+        if nac != prev_nac || system_id != prev_system_id {
+            anomaly = true;
+        }
+    }
+
+    let _ = P25_CONTROL_BASELINE.insert(&radio_id, &packed, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_P25_CONTROL,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: radio_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&radio_id.to_le_bytes());
+                d[4..8].copy_from_slice(&nac.to_le_bytes());
+                d[8..12].copy_from_slice(&system_id.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 42: BLE Pairing/Scanning Defense (Alert 45)
+// Detects LE Secure Connections downgrades and GATT enumeration floods.
+// Hook: kprobe on BLE SMP/GATT handler
+// ══════════════════════════════════════════════════════════════════════════════
+
+const BLE_GATT_ENUM_RATE_THRESHOLD: u32 = 100;
+
+#[kprobe]
+pub fn detect_ble_pairing(ctx: ProbeContext) -> u32 {
+    try_detect_ble_pairing(&ctx).unwrap_or_default()
+}
+
+fn try_detect_ble_pairing(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let conn_handle: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let pairing_mode: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let enum_rate: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+    let mut severity = 3u32;
+
+    if let Some(prev_mode) = unsafe { BLE_PAIRING_STATE.get(&conn_handle) } {
+        // Downgrade from LE Secure Connections (1) to LE Legacy (0)
+        if *prev_mode == 1 && pairing_mode == 0 {
+            anomaly = true;
+            severity = 4;
+        }
+    }
+    let _ = BLE_PAIRING_STATE.insert(&conn_handle, &pairing_mode, 0);
+
+    // GATT service enumeration flood
+    if enum_rate > BLE_GATT_ENUM_RATE_THRESHOLD {
+        anomaly = true;
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_BLE_PAIRING,
+            severity,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: conn_handle as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&conn_handle.to_le_bytes());
+                d[4..8].copy_from_slice(&pairing_mode.to_le_bytes());
+                d[8..12].copy_from_slice(&enum_rate.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 43: Zigbee/Z-Wave Key Provisioning Monitor (Alert 46)
+// Detects unprotected key transport, Z-Wave S0 zero-key inclusion, ZLL touchlink.
+// Hook: kprobe on WPAN join/key exchange path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const ZIGBEE_KEY_UNPROTECTED_TRANSPORT: u32 = 0x1;
+const ZWAVE_S0_ZERO_TEMP_KEY: u32 = 0x2;
+const ZLL_TOUCHLINK_COMMISSIONING: u32 = 0x4;
+
+#[kprobe]
+pub fn detect_zigbee_key(ctx: ProbeContext) -> u32 {
+    try_detect_zigbee_key(&ctx).unwrap_or_default()
+}
+
+fn try_detect_zigbee_key(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let pan_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let key_flags: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let src_hash: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let join_count = unsafe { WPAN_JOIN_LOG.get(&pan_id) }.copied().unwrap_or(0) + 1;
+    let _ = WPAN_JOIN_LOG.insert(&pan_id, &join_count, 0);
+
+    let insecure_flags = key_flags
+        & (ZIGBEE_KEY_UNPROTECTED_TRANSPORT | ZWAVE_S0_ZERO_TEMP_KEY | ZLL_TOUCHLINK_COMMISSIONING);
+
+    if insecure_flags != 0 {
+        let alert = DefenseAlert {
+            alert_type: ALERT_ZIGBEE_KEY,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: pan_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&pan_id.to_le_bytes());
+                d[4..8].copy_from_slice(&key_flags.to_le_bytes());
+                d[8..12].copy_from_slice(&src_hash.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 44: LoRaWAN Join Integrity (Alert 47)
+// Detects OTAA DevNonce replay and ABP frame counter resets (session hijack).
+// Hook: kprobe on LoRaWAN MAC layer
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[kprobe]
+pub fn detect_lorawan_join(ctx: ProbeContext) -> u32 {
+    try_detect_lorawan_join(&ctx).unwrap_or_default()
+}
+
+fn try_detect_lorawan_join(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let dev_addr: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let dev_nonce: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let fcnt: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+    let activation: u32 = unsafe { ctx.arg(3).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    // DevNonce replay: (DevAddr, DevNonce) pair already observed
+    if dev_nonce != 0 {
+        let nonce_key = ((dev_addr as u64) << 32) | dev_nonce as u64;
+        if unsafe { LORAWAN_NONCE_LOG.get(&nonce_key) }.is_some() {
+            anomaly = true;
+        } else {
+            let _ = LORAWAN_NONCE_LOG.insert(&nonce_key, &dev_addr, 0);
+        }
+    }
+
+    // ABP frame counter reset => session hijack
+    if activation == 1 {
+        if let Some(prev_fcnt) = unsafe { LORAWAN_FCNT_LOG.get(&dev_addr) } {
+            if fcnt < *prev_fcnt {
+                anomaly = true;
+            }
+        }
+        let _ = LORAWAN_FCNT_LOG.insert(&dev_addr, &fcnt, 0);
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_LORAWAN_JOIN,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: dev_addr as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&dev_addr.to_le_bytes());
+                d[4..8].copy_from_slice(&dev_nonce.to_le_bytes());
+                d[8..12].copy_from_slice(&fcnt.to_le_bytes());
+                d[12..16].copy_from_slice(&activation.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 45: NB-IoT/LTE-M RRC Anomaly (Alert 48)
+// Detects NAS messages without security context and RRC signaling floods.
+// Hook: kprobe on NB-IoT RRC/NAS dispatch
+// ══════════════════════════════════════════════════════════════════════════════
+
+const NBIOT_MSG_NAS: u32 = 1;
+const NBIOT_RRC_RATE_THRESHOLD: u32 = 50;
+const NBIOT_SEC_ESTABLISHED_BIT: u32 = 1 << 31;
+
+#[kprobe]
+pub fn detect_nbiot_rrc(ctx: ProbeContext) -> u32 {
+    try_detect_nbiot_rrc(&ctx).unwrap_or_default()
+}
+
+fn try_detect_nbiot_rrc(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let ue_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let msg_type: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let sec_ctx: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    // Packed state: bit 31 = security context established, bits 0-30 = msg count
+    let packed = unsafe { NBIOT_RRC_RATE.get(&ue_id) }.copied().unwrap_or(0);
+    let was_established = packed & NBIOT_SEC_ESTABLISHED_BIT != 0;
+    let rate = (packed & 0x7FFF) + 1;
+
+    let mut anomaly = false;
+
+    // NAS message without an active security context after establishment
+    if msg_type == NBIOT_MSG_NAS && sec_ctx == 0 && was_established {
+        anomaly = true;
+    }
+
+    // RRC connection rate exceeds threshold
+    if rate > NBIOT_RRC_RATE_THRESHOLD {
+        anomaly = true;
+    }
+
+    let established = was_established || sec_ctx != 0;
+    let new_packed = if established {
+        NBIOT_SEC_ESTABLISHED_BIT | (rate & 0x7FFF)
+    } else {
+        rate & 0x7FFF
+    };
+    let _ = NBIOT_RRC_RATE.insert(&ue_id, &new_packed, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_NBIOT_RRC,
+            severity: 3,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: ue_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&ue_id.to_le_bytes());
+                d[4..8].copy_from_slice(&msg_type.to_le_bytes());
+                d[8..12].copy_from_slice(&sec_ctx.to_le_bytes());
+                d[12..16].copy_from_slice(&rate.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 46: WiFi Deauth/Disassoc Detection (Alert 49)
+// Detects 802.11 deauth/disassociation frame floods per BSSID.
+// Hook: kprobe on 802.11 management frame path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const WIFI_DEAUTH_SUBTYPE: u32 = 10;
+const WIFI_DISASSOC_SUBTYPE: u32 = 12;
+const WIFI_DEAUTH_FLOOD_THRESHOLD: u32 = 10;
+
+#[kprobe]
+pub fn detect_wifi_deauth(ctx: ProbeContext) -> u32 {
+    try_detect_wifi_deauth(&ctx).unwrap_or_default()
+}
+
+fn try_detect_wifi_deauth(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let bssid_hash: u64 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let subtype: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+
+    if subtype != WIFI_DEAUTH_SUBTYPE && subtype != WIFI_DISASSOC_SUBTYPE {
+        return Ok(0);
+    }
+
+    let count = unsafe { WIFI_DEAUTH_RATE.get(&bssid_hash) }
+        .copied()
+        .unwrap_or(0)
+        + 1;
+    let _ = WIFI_DEAUTH_RATE.insert(&bssid_hash, &count, 0);
+
+    if count > WIFI_DEAUTH_FLOOD_THRESHOLD {
+        let alert = DefenseAlert {
+            alert_type: ALERT_WIFI_DEAUTH,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: bssid_hash,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&subtype.to_le_bytes());
+                d[4..8].copy_from_slice(&count.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 47: WPA3/FT Integrity Monitor (Alert 50)
+// Detects SAE group downgrades, anti-clogging token floods, and timing anomalies.
+// Hook: kprobe on WPA3 SAE handshake path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const SAE_EVENT_COMMIT: u32 = 0;
+const SAE_EVENT_CONFIRM: u32 = 1;
+const SAE_EVENT_GROUP_DOWNGRADE: u32 = 2;
+const SAE_EVENT_ANTI_CLOGGING_TOKEN: u32 = 3;
+const SAE_TOKEN_FLOOD_THRESHOLD: u32 = 20;
+const SAE_MIN_COMMIT_CONFIRM_GAP_US: u32 = 1000;
+
+#[kprobe]
+pub fn detect_wpa3_integrity(ctx: ProbeContext) -> u32 {
+    try_detect_wpa3_integrity(&ctx).unwrap_or_default()
+}
+
+fn try_detect_wpa3_integrity(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let sta_hash: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let sae_event: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let delta_us: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+    let mut severity = 3u32;
+
+    // SAE group downgrade attempt
+    if sae_event == SAE_EVENT_GROUP_DOWNGRADE {
+        anomaly = true;
+        severity = 4;
+    }
+
+    // Anti-clogging token flood
+    let tokens = unsafe { WPA3_SAE_STATE.get(&sta_hash) }
+        .copied()
+        .unwrap_or(0);
+    let new_tokens = if sae_event == SAE_EVENT_ANTI_CLOGGING_TOKEN {
+        tokens + 1
+    } else {
+        tokens
+    };
+    let _ = WPA3_SAE_STATE.insert(&sta_hash, &new_tokens, 0);
+    if new_tokens > SAE_TOKEN_FLOOD_THRESHOLD {
+        anomaly = true;
+    }
+
+    // Commit/confirm gap under 1ms — replay / side-channel indicator
+    if (sae_event == SAE_EVENT_COMMIT || sae_event == SAE_EVENT_CONFIRM)
+        && delta_us != 0
+        && delta_us < SAE_MIN_COMMIT_CONFIRM_GAP_US
+    {
+        anomaly = true;
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_WPA3_INTEGRITY,
+            severity,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: sta_hash as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&sta_hash.to_le_bytes());
+                d[4..8].copy_from_slice(&sae_event.to_le_bytes());
+                d[8..12].copy_from_slice(&delta_us.to_le_bytes());
+                d[12..16].copy_from_slice(&new_tokens.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 48: RKE Jamming Detection (Alert 51)
+// Detects RollJam-style jam+capture patterns at 315/433 MHz.
+// Hook: kprobe on key fob RF front-end
+// ══════════════════════════════════════════════════════════════════════════════
+
+const RKE_JAM_ENERGY_THRESHOLD: u32 = 8000;
+const RKE_ENERGY_DELTA_THRESHOLD: u32 = 5000;
+
+#[kprobe]
+pub fn detect_rke_jamming(ctx: ProbeContext) -> u32 {
+    try_detect_rke_jamming(&ctx).unwrap_or_default()
+}
+
+fn try_detect_rke_jamming(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let fob_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let energy_level: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let tx_failed: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+    let mut severity = 4u32;
+
+    // Sudden RF energy spike at the fob frequency
+    if let Some(prev_energy) = unsafe { RKE_ENERGY_LOG.get(&fob_id) } {
+        if energy_level.abs_diff(*prev_energy as u32) > RKE_ENERGY_DELTA_THRESHOLD {
+            anomaly = true;
+        }
+    }
+    let _ = RKE_ENERGY_LOG.insert(&fob_id, &(energy_level as u64), 0);
+
+    // Sustained jamming coinciding with fob transmission failure (RollJam)
+    if energy_level > RKE_JAM_ENERGY_THRESHOLD && tx_failed == 1 {
+        anomaly = true;
+        severity = 5;
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_RKE_JAMMING,
+            severity,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: fob_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&fob_id.to_le_bytes());
+                d[4..8].copy_from_slice(&energy_level.to_le_bytes());
+                d[8..12].copy_from_slice(&tx_failed.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 49: UAV C2 Integrity Monitor (Alert 52)
+// Detects unsigned MAVLink commands, unauthorized DroneID serials, GCS spoofing.
+// Hook: kprobe on MAVLink/DroneID telemetry path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const UAV_FLAG_SIGNING_REQUIRED: u32 = 1;
+
+#[kprobe]
+pub fn detect_uav_c2(ctx: ProbeContext) -> u32 {
+    try_detect_uav_c2(&ctx).unwrap_or_default()
+}
+
+fn try_detect_uav_c2(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let serial_hash: u64 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let signed_flag: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let gcs_addr_hash: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+    let mut severity = 3u32;
+
+    // Fleet entry packs signing-required flag (high 32 bits) and GCS hash (low 32)
+    if let Some(entry) = unsafe { UAV_FLEET_AUTH.get(&serial_hash) } {
+        let flags = (*entry >> 32) as u32;
+        let fleet_gcs = *entry as u32;
+
+        // Signing configured but command arrives unsigned
+        if flags & UAV_FLAG_SIGNING_REQUIRED != 0 && signed_flag == 0 {
+            anomaly = true;
+            severity = 4;
+        }
+
+        // Command source from unexpected GCS address
+        if fleet_gcs != 0 && gcs_addr_hash != fleet_gcs {
+            anomaly = true;
+        }
+
+        // Keep the trusted GCS binding; refresh only when unset or matching
+        let new_gcs = if fleet_gcs == 0 || gcs_addr_hash == fleet_gcs {
+            gcs_addr_hash
+        } else {
+            fleet_gcs
+        };
+        let updated = ((flags as u64) << 32) | new_gcs as u64;
+        let _ = UAV_FLEET_AUTH.insert(&serial_hash, &updated, 0);
+    } else {
+        // DroneID serial not in the authorized fleet
+        anomaly = true;
+        severity = 4;
+        let flags = if signed_flag == 1 {
+            UAV_FLAG_SIGNING_REQUIRED
+        } else {
+            0
+        };
+        let entry = ((flags as u64) << 32) | gcs_addr_hash as u64;
+        let _ = UAV_FLEET_AUTH.insert(&serial_hash, &entry, 0);
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_UAV_C2,
+            severity,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: serial_hash as u32 as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&(serial_hash as u32).to_le_bytes());
+                d[4..8].copy_from_slice(&signed_flag.to_le_bytes());
+                d[8..12].copy_from_slice(&gcs_addr_hash.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 50: Pager Signal Anomaly (Alert 53)
+// Detects unknown POCSAG/FLEX RIC addresses, baud anomalies, irregular bursts.
+// Hook: kprobe on pager decoder path
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[kprobe]
+pub fn detect_pager_anomaly(ctx: ProbeContext) -> u32 {
+    try_detect_pager_anomaly(&ctx).unwrap_or_default()
+}
+
+fn try_detect_pager_anomaly(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let ric: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let baud: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let burst_pattern: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    // RIC address not seen before (not in the registered database)
+    if unsafe { PAGER_RIC_LOG.get(&ric) }.is_none() {
+        anomaly = true;
+    }
+    let _ = PAGER_RIC_LOG.insert(&ric, &now, 0);
+
+    // Baud rate outside POCSAG (512/1200/2400) or FLEX (1600/3200/6400)
+    match baud {
+        512 | 1200 | 2400 | 1600 | 3200 | 6400 => {}
+        _ => anomaly = true,
+    }
+
+    // Irregular burst timing pattern
+    if burst_pattern & 0x80 != 0 {
+        anomaly = true;
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_PAGER_ANOMALY,
+            severity: 3,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: ric as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&ric.to_le_bytes());
+                d[4..8].copy_from_slice(&baud.to_le_bytes());
+                d[8..12].copy_from_slice(&burst_pattern.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 51: Broadcast Injection Detection (Alert 54)
+// Detects RDS PI code changes without switchover and unauthorized DAB+ FIG data.
+// Hook: kprobe on RDS/DAB+ demodulator path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const BROADCAST_FIG_SWITCHOVER_FLAG: u32 = 0x40;
+const BROADCAST_FIG_UNAUTHORIZED_TYPE: u32 = 0x21;
+
+#[kprobe]
+pub fn detect_broadcast_injection(ctx: ProbeContext) -> u32 {
+    try_detect_broadcast_injection(&ctx).unwrap_or_default()
+}
+
+fn try_detect_broadcast_injection(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let pi_code: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let fig_type: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let service_hash: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    if let Some(prev_pi) = unsafe { BROADCAST_PI_LOG.get(&service_hash) } {
+        // PI code changed without the switchover flag
+        if pi_code != *prev_pi && fig_type & BROADCAST_FIG_SWITCHOVER_FLAG == 0 {
+            anomaly = true;
+        }
+    } else if fig_type == BROADCAST_FIG_UNAUTHORIZED_TYPE {
+        // FIG type 0x21 from an unknown source
+        anomaly = true;
+    }
+
+    let _ = BROADCAST_PI_LOG.insert(&service_hash, &pi_code, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_BROADCAST_INJECTION,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: pi_code as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&pi_code.to_le_bytes());
+                d[4..8].copy_from_slice(&fig_type.to_le_bytes());
+                d[8..12].copy_from_slice(&service_hash.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 52: Emergency Alert Spoofing Detection (Alert 55)
+// Detects invalid SAME originator codes, malformed event codes, unauthorized WEA.
+// Hook: kprobe on EAS/WEA message delivery path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const EAS_MAX_ORIGINATOR_CODE: u32 = 6;
+const EAS_MAX_EVENT_CODE: u32 = 200;
+
+#[kprobe]
+pub fn detect_eas_spoofing(ctx: ProbeContext) -> u32 {
+    try_detect_eas_spoofing(&ctx).unwrap_or_default()
+}
+
+fn try_detect_eas_spoofing(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let originator: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let event_code: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let plmn_auth: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let count = unsafe { EAS_ORIGINATOR_LOG.get(&originator) }
+        .copied()
+        .unwrap_or(0)
+        + 1;
+    let _ = EAS_ORIGINATOR_LOG.insert(&originator, &count, 0);
+
+    let mut anomaly = false;
+
+    // Originator code outside the known SAME values
+    if originator > EAS_MAX_ORIGINATOR_CODE {
+        anomaly = true;
+    }
+
+    // Malformed event code
+    if event_code == 0 || event_code > EAS_MAX_EVENT_CODE {
+        anomaly = true;
+    }
+
+    // WEA without a PLMN authorization chain
+    if plmn_auth == 0 {
+        anomaly = true;
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_EAS_SPOOFING,
+            severity: 5,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: originator as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&originator.to_le_bytes());
+                d[4..8].copy_from_slice(&event_code.to_le_bytes());
+                d[8..12].copy_from_slice(&plmn_auth.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 53: O-RAN Fronthaul Integrity (Alert 56)
+// Detects eCPRI sequence gaps, IQ sample injection, and O-RAN WG4 timing violations.
+// Hook: kprobe on eCPRI fronthaul receive path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const ECPRI_IQ_AMPLITUDE_MAX: u32 = 32768;
+const ORAN_TIMING_OFFSET_MAX_NS: u32 = 65;
+
+#[kprobe]
+pub fn detect_oran_fronthaul(ctx: ProbeContext) -> u32 {
+    try_detect_oran_fronthaul(&ctx).unwrap_or_default()
+}
+
+fn try_detect_oran_fronthaul(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let pc_id: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let seq_num: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let iq_amplitude: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+    let timing_offset_ns: i32 = unsafe { ctx.arg(3).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    // eCPRI sequence number gap (dropped or injected frames)
+    if let Some(prev_seq) = unsafe { ECPRI_SEQ_TRACK.get(&pc_id) } {
+        if *prev_seq != 0 && seq_num != prev_seq.wrapping_add(1) {
+            anomaly = true;
+        }
+    }
+    let _ = ECPRI_SEQ_TRACK.insert(&pc_id, &seq_num, 0);
+
+    // IQ sample amplitude beyond expected range (injection)
+    if iq_amplitude > ECPRI_IQ_AMPLITUDE_MAX {
+        anomaly = true;
+    }
+
+    // Timing violation beyond O-RAN WG4 +/-65ns
+    if timing_offset_ns.unsigned_abs() > ORAN_TIMING_OFFSET_MAX_NS {
+        anomaly = true;
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_ORAN_FRONTHAUL,
+            severity: 4,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: pc_id as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&seq_num.to_le_bytes());
+                d[4..8].copy_from_slice(&iq_amplitude.to_le_bytes());
+                d[8..12].copy_from_slice(&timing_offset_ns.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 54: O-RAN RIC Security Monitor (Alert 57)
+// Detects rogue xApp registrations, A1 policy injection, and O1 config changes.
+// Hook: kprobe on Near-RT RIC E2/A1/O1 interface path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const RIC_EVENT_SUBSCRIPTION: u32 = 0;
+const RIC_EVENT_REGISTRATION: u32 = 1;
+const RIC_EVENT_A1_POLICY: u32 = 2;
+const RIC_EVENT_O1_CONFIG: u32 = 3;
+
+#[kprobe]
+pub fn detect_oran_ric(ctx: ProbeContext) -> u32 {
+    try_detect_oran_ric(&ctx).unwrap_or_default()
+}
+
+fn try_detect_oran_ric(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let xapp_id: u64 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let event_type: u32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let e2_node_id: u32 = unsafe { ctx.arg(2).unwrap_or(0) };
+
+    let mut anomaly = false;
+    let mut severity = 4u32;
+
+    // Registry entry packs last event type (high 32 bits) and E2 node (low 32)
+    if unsafe { RIC_XAPP_LOG.get(&xapp_id) }.is_some() {
+        // Known xApp: refresh the latest E2 node association
+        let updated = ((event_type as u64) << 32) | e2_node_id as u64;
+        let _ = RIC_XAPP_LOG.insert(&xapp_id, &updated, 0);
+
+        // O1 configuration change — maintenance window verified in user space
+        if event_type == RIC_EVENT_O1_CONFIG {
+            anomaly = true;
+            severity = 3;
+        }
+    } else {
+        // Unknown xApp: rogue registration attempt, unauthorized E2
+        // subscription, or A1 policy injection from an unknown source
+        anomaly = true;
+        severity = match event_type {
+            RIC_EVENT_O1_CONFIG => 3,
+            RIC_EVENT_REGISTRATION | RIC_EVENT_SUBSCRIPTION | RIC_EVENT_A1_POLICY => 4,
+            _ => 4,
+        };
+    }
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_ORAN_RIC,
+            severity,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: xapp_id as u32 as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&(xapp_id as u32).to_le_bytes());
+                d[4..8].copy_from_slice(&event_type.to_le_bytes());
+                d[8..12].copy_from_slice(&e2_node_id.to_le_bytes());
+                d
+            },
+        };
+        let _ = DEFENSE_ALERTS.output(&alert, 0);
+    }
+
+    Ok(0)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODULE 55: AIS Signal Integrity (Alert 58)
+// Physics-based validation of AIS position, speed, and course reports.
+// Hook: kprobe on AIS receiver decode path
+// ══════════════════════════════════════════════════════════════════════════════
+
+const AIS_MAX_SPEED_TENTHS: u32 = 500; // 50 knots for cargo
+const AIS_MAX_POSITION_JUMP_DEG: u32 = 100;
+const AIS_MAX_COURSE_CHANGE_TENTHS: u32 = 7200; // 720 deg/min equivalent
+
+#[kprobe]
+pub fn detect_ais_integrity(ctx: ProbeContext) -> u32 {
+    try_detect_ais_integrity(&ctx).unwrap_or_default()
+}
+
+fn try_detect_ais_integrity(ctx: &ProbeContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let now = unsafe { bpf_ktime_get_ns() };
+
+    let mmsi: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
+    let lat: i32 = unsafe { ctx.arg(1).unwrap_or(0) };
+    let lon: i32 = unsafe { ctx.arg(2).unwrap_or(0) };
+    let sog_tenths: u32 = unsafe { ctx.arg(3).unwrap_or(0) };
+    let cog_tenths: u32 = unsafe { ctx.arg(4).unwrap_or(0) };
+
+    let mut anomaly = false;
+
+    if let Some(prev) = unsafe { AIS_VESSEL_TRACK.get(&mmsi) } {
+        // Position jump inconsistent with prior trajectory
+        if lat.abs_diff(prev.lat_deg) > AIS_MAX_POSITION_JUMP_DEG
+            || lon.abs_diff(prev.lon_deg) > AIS_MAX_POSITION_JUMP_DEG
+        {
+            anomaly = true;
+        }
+
+        // Course change exceeding physical turn-rate limits
+        if cog_tenths.abs_diff(prev.cog_tenths as u32) > AIS_MAX_COURSE_CHANGE_TENTHS {
+            anomaly = true;
+        }
+    }
+
+    // Speed exceeding vessel class maximum
+    if sog_tenths > AIS_MAX_SPEED_TENTHS {
+        anomaly = true;
+    }
+
+    let state = AisVesselState {
+        mmsi,
+        lat_deg: lat,
+        lon_deg: lon,
+        sog_tenths: sog_tenths as u16,
+        cog_tenths: cog_tenths as u16,
+        msg_type: 0,
+        _pad: [0; 3],
+        timestamp_ns: now,
+    };
+    let _ = AIS_VESSEL_TRACK.insert(&mmsi, &state, 0);
+
+    if anomaly {
+        let alert = DefenseAlert {
+            alert_type: ALERT_AIS_INTEGRITY,
+            severity: 5,
+            pid,
+            _pad: 0,
+            timestamp_ns: now,
+            context: mmsi as u64,
+            details: {
+                let mut d = [0u8; 16];
+                d[0..4].copy_from_slice(&mmsi.to_le_bytes());
+                d[4..8].copy_from_slice(&sog_tenths.to_le_bytes());
+                d[8..12].copy_from_slice(&cog_tenths.to_le_bytes());
+                d[12..16].copy_from_slice(&lat.to_le_bytes());
                 d
             },
         };

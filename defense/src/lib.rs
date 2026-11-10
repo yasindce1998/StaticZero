@@ -16,13 +16,16 @@ pub mod server;
 use std::collections::{HashMap as StdHashMap, HashSet, VecDeque};
 
 use common::{
-    DefenseAlert, ALERT_AVIATION_INTEGRITY, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK,
-    ALERT_DVBS2_ANOMALY, ALERT_ESIM_TAMPER, ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY,
-    ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_LEO_SIGNALING, ALERT_MODEM_TAMPER,
-    ALERT_NAS_REPLAY, ALERT_NTN_ANOMALY, ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT,
-    ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM,
-    ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_STARLINK_AUTH, ALERT_VOLTE_FRAUD,
-    ALERT_VSAT_INTEGRITY,
+    DefenseAlert, ALERT_AIS_INTEGRITY, ALERT_AVIATION_INTEGRITY, ALERT_BLE_PAIRING,
+    ALERT_BROADCAST_INJECTION, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_DVBS2_ANOMALY,
+    ALERT_EAS_SPOOFING, ALERT_ESIM_TAMPER, ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY,
+    ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_LEO_SIGNALING, ALERT_LORAWAN_JOIN,
+    ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_NBIOT_RRC, ALERT_NTN_ANOMALY, ALERT_ORAN_FRONTHAUL,
+    ALERT_ORAN_RIC, ALERT_P25_CONTROL, ALERT_PAGER_ANOMALY, ALERT_RAN_SHARING_LEAK,
+    ALERT_RF_FINGERPRINT, ALERT_RKE_JAMMING, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER,
+    ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY,
+    ALERT_STARLINK_AUTH, ALERT_TETRA_ENCRYPTION, ALERT_UAV_C2, ALERT_VOLTE_FRAUD,
+    ALERT_VSAT_INTEGRITY, ALERT_WIFI_DEAUTH, ALERT_WPA3_INTEGRITY, ALERT_ZIGBEE_KEY,
 };
 use serde::{Deserialize, Serialize};
 
@@ -81,6 +84,46 @@ pub fn format_alert_details(alert: &DefenseAlert) -> String {
             format!("icao_addr={}, altitude_rate={}", alert.context, detail_u64)
         }
         ALERT_GNSS_SPOOFING => format!("prn={}, cn0_delta={}", alert.context, detail_u64),
+        ALERT_TETRA_ENCRYPTION => {
+            format!("radio_id={}, cipher={}", alert.context, detail_u64)
+        }
+        ALERT_P25_CONTROL => format!("radio_id={}, nac={}", alert.context, detail_u64),
+        ALERT_BLE_PAIRING => {
+            format!("conn_handle={}, pairing_mode={}", alert.context, detail_u64)
+        }
+        ALERT_ZIGBEE_KEY => format!("pan_id={}, key_flags={}", alert.context, detail_u64),
+        ALERT_LORAWAN_JOIN => {
+            format!("dev_addr={}, nonce/fcnt={}", alert.context, detail_u64)
+        }
+        ALERT_NBIOT_RRC => format!("ue_id={}, msg_state={}", alert.context, detail_u64),
+        ALERT_WIFI_DEAUTH => {
+            format!("bssid_hash={}, deauth_count={}", alert.context, detail_u64)
+        }
+        ALERT_WPA3_INTEGRITY => {
+            format!("sta_hash={}, sae_event={}", alert.context, detail_u64)
+        }
+        ALERT_RKE_JAMMING => {
+            format!("fob_id={}, energy_level={}", alert.context, detail_u64)
+        }
+        ALERT_UAV_C2 => {
+            format!("serial_hash={}, flags={}", alert.context, detail_u64)
+        }
+        ALERT_PAGER_ANOMALY => format!("ric={}, burst_flags={}", alert.context, detail_u64),
+        ALERT_BROADCAST_INJECTION => {
+            format!("pi_code={}, fig_type={}", alert.context, detail_u64)
+        }
+        ALERT_EAS_SPOOFING => {
+            format!("originator={}, event_code={}", alert.context, detail_u64)
+        }
+        ALERT_ORAN_FRONTHAUL => {
+            format!("pc_id={}, seq/iq={}", alert.context, detail_u64)
+        }
+        ALERT_ORAN_RIC => {
+            format!("xapp_id={}, event_type={}", alert.context, detail_u64)
+        }
+        ALERT_AIS_INTEGRITY => {
+            format!("mmsi={}, sog_cog={}", alert.context, detail_u64)
+        }
         _ => format!("context={}", alert.context),
     }
 }
@@ -143,6 +186,9 @@ pub enum ThreatCategory {
     GnssSpoofing,
     BeaconFalsification,
     TerminalCompromise,
+    WifiRogueAp,
+    FronthaulCompromise,
+    AisSpoofing,
 }
 
 #[derive(Debug, Clone)]
@@ -273,6 +319,22 @@ impl TelecomCorrelationEngine {
             | ALERT_STARLINK_AUTH
             | ALERT_AVIATION_INTEGRITY
             | ALERT_GNSS_SPOOFING => TelecomLayer::Satellite,
+            // RF protocol domain modules (40-55)
+            ALERT_TETRA_ENCRYPTION
+            | ALERT_P25_CONTROL
+            | ALERT_BLE_PAIRING
+            | ALERT_ZIGBEE_KEY
+            | ALERT_LORAWAN_JOIN
+            | ALERT_NBIOT_RRC
+            | ALERT_WIFI_DEAUTH
+            | ALERT_WPA3_INTEGRITY
+            | ALERT_RKE_JAMMING
+            | ALERT_UAV_C2
+            | ALERT_PAGER_ANOMALY
+            | ALERT_BROADCAST_INJECTION
+            | ALERT_EAS_SPOOFING => TelecomLayer::Radio,
+            ALERT_ORAN_FRONTHAUL | ALERT_ORAN_RIC => TelecomLayer::Core,
+            ALERT_AIS_INTEGRITY => TelecomLayer::Satellite,
             _ => TelecomLayer::Core,
         };
 
@@ -299,11 +361,11 @@ impl TelecomCorrelationEngine {
         let window = self.cell_windows.get(&cell_id)?;
         let layers = window.layers_active();
 
-        if layers.len() < 2 {
-            return None;
+        // Multi-layer statistics; single-layer compound patterns (e.g. two
+        // distinct Radio alert types) are still evaluated below.
+        if layers.len() >= 2 {
+            self.metrics.multi_layer_correlations += 1;
         }
-
-        self.metrics.multi_layer_correlations += 1;
 
         if layers.contains(&TelecomLayer::Radio) && layers.contains(&TelecomLayer::Nas) {
             let radio_events = window.events_in_layer(TelecomLayer::Radio);
@@ -560,6 +622,75 @@ impl TelecomCorrelationEngine {
             }
         }
 
+        // ── RF protocol domain patterns (Modules 40-55) ─────────────────────
+
+        // WiFi rogue AP: deauth flood + WPA3/FT integrity failure in same window
+        if layers.contains(&TelecomLayer::Radio) {
+            let radio_events = window.events_in_layer(TelecomLayer::Radio);
+            let has_deauth = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_WIFI_DEAUTH);
+            let has_wpa3 = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_WPA3_INTEGRITY);
+
+            if has_deauth && has_wpa3 {
+                let threat = self.build_threat(
+                    ThreatCategory::WifiRogueAp,
+                    0.91,
+                    4,
+                    vec![TelecomLayer::Radio],
+                    window.events.iter().cloned().collect(),
+                    "WiFi deauth flood with WPA3/FT integrity failure — rogue AP / evil twin attack",
+                );
+                return Some(threat);
+            }
+        }
+
+        // O-RAN fronthaul compromise: fronthaul integrity + RIC security (both Core layer)
+        if layers.contains(&TelecomLayer::Core) {
+            let core_events = window.events_in_layer(TelecomLayer::Core);
+            let has_fronthaul = core_events
+                .iter()
+                .any(|e| e.event_type == ALERT_ORAN_FRONTHAUL);
+            let has_ric = core_events.iter().any(|e| e.event_type == ALERT_ORAN_RIC);
+
+            if has_fronthaul && has_ric {
+                let threat = self.build_threat(
+                    ThreatCategory::FronthaulCompromise,
+                    0.93,
+                    5,
+                    vec![TelecomLayer::Core],
+                    window.events.iter().cloned().collect(),
+                    "eCPRI fronthaul anomaly with RIC security violation — coordinated O-RAN compromise",
+                );
+                return Some(threat);
+            }
+        }
+
+        // AIS spoofing: maritime integrity + GNSS spoofing (satellite-terrestrial positioning)
+        if layers.contains(&TelecomLayer::Satellite) {
+            let sat_events = window.events_in_layer(TelecomLayer::Satellite);
+            let has_ais = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_AIS_INTEGRITY);
+            let has_gnss = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_GNSS_SPOOFING);
+
+            if has_ais && has_gnss {
+                let threat = self.build_threat(
+                    ThreatCategory::AisSpoofing,
+                    0.94,
+                    5,
+                    vec![TelecomLayer::Satellite],
+                    window.events.iter().cloned().collect(),
+                    "AIS physics violation with GNSS spoofing — maritime position falsification",
+                );
+                return Some(threat);
+            }
+        }
+
         None
     }
 
@@ -702,9 +833,11 @@ impl Default for TelecomCorrelationEngine {
 mod tests {
     use super::*;
     use common::{
-        DefenseAlert, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_GTP_ANOMALY,
-        ALERT_IMSI_CATCHER, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER,
-        ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_VOLTE_FRAUD,
+        DefenseAlert, ALERT_AIS_INTEGRITY, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK,
+        ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY, ALERT_IMSI_CATCHER, ALERT_ORAN_FRONTHAUL,
+        ALERT_ORAN_RIC, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER,
+        ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_VOLTE_FRAUD, ALERT_WIFI_DEAUTH,
+        ALERT_WPA3_INTEGRITY,
     };
 
     fn make_alert(alert_type: u32, severity: u32, timestamp_ns: u64, context: u64) -> DefenseAlert {
@@ -920,5 +1053,63 @@ mod tests {
         assert_eq!(abuse.len(), 1);
         let empty = engine.threats_by_category(ThreatCategory::TollFraud);
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn test_wifi_rogue_ap_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let bssid: u64 = 0xDEAD;
+
+        // Both alerts map to the Radio layer on the same cell context
+        let a1 = make_alert(ALERT_WIFI_DEAUTH, 4, 1_000_000_000, bssid);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_WPA3_INTEGRITY, 4, 2_000_000_000, bssid);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::WifiRogueAp);
+        assert!(t.confidence >= 0.9);
+        assert_eq!(t.severity, 4);
+        assert!(t.layers_involved.contains(&TelecomLayer::Radio));
+    }
+
+    #[test]
+    fn test_fronthaul_compromise_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let pc_id: u64 = 0x0700;
+
+        let a1 = make_alert(ALERT_ORAN_FRONTHAUL, 4, 1_000_000_000, pc_id);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_ORAN_RIC, 4, 2_000_000_000, pc_id);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::FronthaulCompromise);
+        assert!((t.confidence - 0.93).abs() < 1e-9);
+        assert_eq!(t.severity, 5);
+        assert!(t.layers_involved.contains(&TelecomLayer::Core));
+    }
+
+    #[test]
+    fn test_ais_spoofing_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let mmsi: u64 = 0x123456;
+
+        let a1 = make_alert(ALERT_AIS_INTEGRITY, 5, 1_000_000_000, mmsi);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_GNSS_SPOOFING, 4, 2_000_000_000, mmsi);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::AisSpoofing);
+        assert!((t.confidence - 0.94).abs() < 1e-9);
+        assert_eq!(t.severity, 5);
+        assert!(t.layers_involved.contains(&TelecomLayer::Satellite));
     }
 }

@@ -3,11 +3,13 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
 };
 use common::{
-    AdsbAircraftState, AkaAuthState, CellInfo, EsimProvisionCtx, FemtocellCtx, GnssSignalState,
-    GtpTunnelState, HandoverCtx, ImsSipSession, LiInterfaceState, MimoBeamState, NetworkSliceInfo,
-    NrfRegistration, NtnTimingState, RoamingState, RootkitConfig, RtpStreamState,
-    SatelliteLinkState, SbiSessionState, SidelinkCtx, SignalingState, StarlinkSessionState,
-    SuplSpoofState, VoWiFiTunnelState,
+    AdsbAircraftState, AisVesselState, AkaAuthState, BleLinkState, BroadcastInjectState, CellInfo,
+    EcpriFronthaulState, EsimProvisionCtx, FemtocellCtx, GnssSignalState, GtpTunnelState,
+    HandoverCtx, ImsSipSession, LiInterfaceState, LmrRadioState, LoRaSessionState, MimoBeamState,
+    NetworkSliceInfo, NrfRegistration, NtnTimingState, OranRicState, PagerMessageState,
+    RkeFobState, RoamingState, RootkitConfig, RtpStreamState, SatelliteLinkState, SbiSessionState,
+    SidelinkCtx, SignalingState, StarlinkSessionState, SuplSpoofState, UavLinkState,
+    VoWiFiTunnelState, WifiClientState, WpanNetworkState,
 };
 
 // ──────────────────────────────────────────────
@@ -181,3 +183,49 @@ pub(crate) static ADSB_AIRCRAFT: HashMap<u32, AdsbAircraftState> = HashMap::with
 #[map]
 pub(crate) static SAT_WIPE_FLAG: aya_ebpf::maps::Array<u32> =
     aya_ebpf::maps::Array::with_max_entries(1, 0);
+
+// ──────────────────────────────────────────────
+// Category 9: RF Protocol Domain Maps
+// ──────────────────────────────────────────────
+
+#[map]
+pub(crate) static LMR_RADIO_STATE: HashMap<u32, LmrRadioState> = HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static BLE_LINK_STATE: HashMap<u32, BleLinkState> = HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static WPAN_NETWORK_STATE: HashMap<u32, WpanNetworkState> =
+    HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static LORAWAN_SESSIONS: HashMap<u32, LoRaSessionState> =
+    HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static WIFI_CLIENTS: HashMap<u32, WifiClientState> = HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static RKE_FOB_STATE: HashMap<u32, RkeFobState> = HashMap::with_max_entries(16, 0);
+
+#[map]
+pub(crate) static UAV_LINK_STATE: HashMap<u32, UavLinkState> = HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static PAGER_MESSAGES: HashMap<u32, PagerMessageState> =
+    HashMap::with_max_entries(128, 0);
+
+#[map]
+pub(crate) static BROADCAST_INJECT_STATE: HashMap<u32, BroadcastInjectState> =
+    HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static ECPRI_FRONTHAUL_STATE: HashMap<u32, EcpriFronthaulState> =
+    HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static ORAN_RIC_STATE: HashMap<u32, OranRicState> = HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static AIS_VESSEL_STATE: HashMap<u32, AisVesselState> =
+    HashMap::with_max_entries(128, 0);

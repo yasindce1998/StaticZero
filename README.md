@@ -11,6 +11,13 @@ eBPF-based telecom security research framework covering 2G through 5G and non-te
 
 > **Research/educational purposes only.** Unauthorized interception of telecommunications is illegal in most jurisdictions.
 
+> **Implementation status:** The capability tables are a research catalog, not
+> proof of working live interception/detection. Defense Module 22 has an
+> experimental passive `openat` adapter; Modules 16–21 and 23–55 currently lack
+> validated attachment adapters and are reported as unsupported by the loader.
+> SDR hardware methods also include scaffolding. See
+> [defense validation](docs/DEFENSE_VALIDATION.md) for limitations and smoke tests.
+
 ## Architecture
 
 ```
@@ -327,6 +334,7 @@ Hardware-abstracted radio interface supporting HackRF, bladeRF, USRP, RTL-SDR, a
 - [docs/usecase.md](docs/usecase.md) — Use cases, how-to guides, full offense/defense reference
 - [docs/TELECOM_THREAT_MODEL.md](docs/TELECOM_THREAT_MODEL.md) — Attack trees, threat actors, MITRE mapping
 - [docs/LAB_SETUP.md](docs/LAB_SETUP.md) — Isolated lab environment configuration
+- [docs/DEFENSE_VALIDATION.md](docs/DEFENSE_VALIDATION.md) — Runtime support, read-only preflight, passive smoke tests
 
 ## Requirements
 
@@ -352,7 +360,10 @@ cargo xtask build-ebpf --release
 # Build user-space
 cargo build --release
 
-# Run defense engine
+# Inspect supported/unsupported modules without loading or attaching BPF
+./target/release/staticzero-defense --doctor --all
+
+# Run defense engine (only supported adapters attach; see validation guide)
 sudo ./target/release/staticzero-defense --all
 
 # Run offense loader (authorized testing only)

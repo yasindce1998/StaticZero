@@ -13,6 +13,7 @@ common = { package = "staticzero-common", path = "../common", default-features =
 anyhow = "1"
 aya = { version = "~0.12", features = ["async_tokio"] }
 aya-log = "~0.2"
+aya-obj = "0.1"
 bytes = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
@@ -31,6 +32,7 @@ libc = "0.2"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+tower = { version = "0.5", features = ["util"] }
 
 [[bench]]
 name = "correlation"

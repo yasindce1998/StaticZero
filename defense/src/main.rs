@@ -3,9 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use aya::maps::RingBuf;
-use aya::programs::KProbe;
 use aya::BpfLoader;
 use clap::Parser;
 use tokio::signal;
@@ -15,13 +14,17 @@ use tracing_subscriber::EnvFilter;
 
 use common::DefenseAlert;
 use defense::adaptive::AdaptiveThresholds;
-use defense::bus::{BusMessage, InProcessBus, MessagePublisher, ThreatEnvelope};
+use defense::bus::{BusMessage, InProcessBus};
 use defense::config::{Config, ConfigWatcher};
 use defense::metrics::Metrics;
 use defense::persistence::AlertStore;
+use defense::pipeline::{decode_alert, AlertPipeline};
+use defense::probes::{
+    attach_probes, configure_modem_probe, select_probes, ProbeGroup, ProbeStatus,
+};
 use defense::security::{harden_process, validate_environment, SecurityConfig};
 use defense::server::{build_router, AppState};
-use defense::{TelecomCorrelationEngine, TelecomCorrelationMetrics};
+use defense::TelecomCorrelationMetrics;
 
 #[derive(Parser, Debug)]
 #[command(name = "staticzero-defense")]
@@ -38,6 +41,22 @@ struct Cli {
     /// Configuration file path
     #[arg(short, long, default_value = "/etc/staticzero/config.toml")]
     config: PathBuf,
+
+    /// Read-only platform, privilege, ELF, and attachment preflight; then exit
+    #[arg(long)]
+    doctor: bool,
+
+    /// Select modules explicitly (comma-separated IDs); overrides group flags
+    #[arg(long, value_delimiter = ',')]
+    modules: Vec<u8>,
+
+    /// Exact absolute pathname to observe in native openat attempts (Module 22)
+    #[arg(long, default_value = "/dev/cdc-wdm0")]
+    modem_path: PathBuf,
+
+    /// Authorized process IDs for Module 22 (comma-separated; at most 32)
+    #[arg(long, value_delimiter = ',')]
+    allow_modem_pid: Vec<u32>,
 
     /// Enable basic telecom detection (modules 16-23)
     #[arg(long, default_value_t = true)]
@@ -79,20 +98,43 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .init();
 
     let cli = Cli::parse();
-    let running = Arc::new(AtomicBool::new(true));
-
-    // ── Phase 6: Security hardening ─────────────────────────────────────────
-    if !cli.no_harden {
-        let warnings = validate_environment();
-        for w in &warnings {
-            warn!("{}", w);
+    let mut groups = Vec::new();
+    for (enabled, group) in [
+        (cli.all || cli.telecom_detect, ProbeGroup::Telecom),
+        (cli.all || cli.telecom_advanced, ProbeGroup::Advanced),
+        (cli.all || cli.telecom_5g_defense, ProbeGroup::Core),
+        (cli.all || cli.satellite_defense, ProbeGroup::Satellite),
+        (cli.all || cli.rf_defense, ProbeGroup::Rf),
+    ] {
+        if enabled {
+            groups.push(group);
         }
-        harden_process(&SecurityConfig::default())?;
     }
+    let selected = select_probes(&cli.modules, &groups)?;
+    let preflight = defense::doctor::inspect(
+        &cli.bpf_path,
+        &selected,
+        &cli.modem_path,
+        &cli.allow_modem_pid,
+    );
+    if cli.doctor || !preflight.passed() {
+        preflight.print(cli.json)?;
+    }
+    ensure!(
+        preflight.passed(),
+        "defense preflight failed; use --doctor for details"
+    );
+    if cli.doctor {
+        return Ok(());
+    }
+    let running = Arc::new(AtomicBool::new(true));
 
     // ── Phase 4: Load configuration ─────────────────────────────────────────
     let config = Config::load_or_default(&cli.config);
@@ -162,18 +204,6 @@ async fn main() -> Result<()> {
         start_time,
     });
 
-    if config.server.enabled {
-        let router = build_router(app_state.clone());
-        let listen_addr = config.server.listen_addr.clone();
-        tokio::spawn(async move {
-            let listener = tokio::net::TcpListener::bind(&listen_addr)
-                .await
-                .expect("failed to bind HTTP server");
-            info!("HTTP server listening on {}", listen_addr);
-            axum::serve(listener, router).await.ok();
-        });
-    }
-
     // ── eBPF loading ────────────────────────────────────────────────────────
     info!("StaticZero Telecom Defense Engine starting");
     info!("Loading eBPF programs from {:?}", cli.bpf_path);
@@ -182,212 +212,37 @@ async fn main() -> Result<()> {
         .load_file(&cli.bpf_path)
         .context("failed to load eBPF object")?;
 
-    let enable_telecom = cli.all || cli.telecom_detect;
-    let enable_advanced = cli.all || cli.telecom_advanced;
-    let enable_5g_defense = cli.all || cli.telecom_5g_defense;
-    let enable_satellite = cli.all || cli.satellite_defense;
-    let enable_rf_defense = cli.all || cli.rf_defense;
-
-    if enable_telecom {
-        let probes = [
-            ("detect_rogue_tower", "Module 16: Rogue Tower Detection"),
-            (
-                "detect_downgrade_attack",
-                "Module 17: Downgrade Attack Detection",
-            ),
-            ("detect_imsi_catcher", "Module 18: IMSI Catcher Detection"),
-            (
-                "detect_cell_param_anomaly",
-                "Module 19: Cell Parameter Anomaly",
-            ),
-            ("detect_gtp_anomaly", "Module 20: GTP Traffic Anomaly"),
-            ("detect_ss7_anomaly", "Module 21: SS7/SIGTRAN Anomaly"),
-            ("detect_modem_tamper", "Module 22: Modem Tamper Detection"),
-            (
-                "detect_nas_replay",
-                "Module 23: NAS Replay/Injection Detection",
-            ),
-        ];
-
-        for (name, desc) in &probes {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(name.trim_start_matches("detect_"), 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} not found in eBPF object, skipping", name),
-            }
+    let (_, filename_offset) = defense::doctor::openat_layout()?;
+    configure_modem_probe(
+        &mut bpf,
+        &cli.modem_path,
+        &cli.allow_modem_pid,
+        filename_offset,
+    )?;
+    let reports = attach_probes(&mut bpf, &selected);
+    for report in &reports {
+        match report.status {
+            ProbeStatus::Active => info!(module = report.module, "active: {}", report.detail),
+            _ => warn!(module = report.module, status = ?report.status, "{}", report.detail),
         }
     }
-
-    if enable_advanced {
-        let probes = [
-            ("detect_volte_fraud", "Module 24: VoLTE Fraud Detection"),
-            ("detect_esim_tamper", "Module 25: eSIM Provisioning Monitor"),
-            (
-                "detect_slice_violation",
-                "Module 26: Slice Isolation Verification",
-            ),
-            (
-                "detect_roaming_anomaly",
-                "Module 27: Roaming Anomaly Detection",
-            ),
-            (
-                "detect_rf_fingerprint",
-                "Module 28: RF Fingerprint Analysis",
-            ),
-        ];
-
-        for (name, desc) in &probes {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(name.trim_start_matches("detect_"), 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} not found in eBPF object, skipping", name),
-            }
-        }
-    }
-
-    if enable_5g_defense {
-        let probes_5g = [
-            ("detect_sbi_anomaly", "Module 29: SBI Anomaly Detection"),
-            (
-                "detect_handover_integrity",
-                "Module 30: Handover Integrity Monitoring",
-            ),
-            (
-                "detect_ran_sharing_leak",
-                "Module 31: RAN Sharing Isolation",
-            ),
-            (
-                "detect_signaling_storm",
-                "Module 32: Signaling Storm Detection",
-            ),
-        ];
-
-        for (name, desc) in &probes_5g {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(name.trim_start_matches("detect_"), 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} not found in eBPF object, skipping", name),
-            }
-        }
-    }
-
-    if enable_satellite {
-        let probes_sat = [
-            (
-                "detect_dvbs2_anomaly",
-                "Module 33: DVB-S2/S2X Anomaly Detection",
-            ),
-            ("detect_ntn_anomaly", "Module 34: NTN Access Anomaly"),
-            (
-                "detect_leo_signaling",
-                "Module 35: LEO Constellation Monitor",
-            ),
-            (
-                "detect_vsat_integrity",
-                "Module 36: VSAT/SCPC Integrity Monitor",
-            ),
-            ("detect_starlink_auth", "Module 37: Starlink Auth Monitor"),
-            (
-                "detect_aviation_integrity",
-                "Module 38: Aviation Signal Integrity",
-            ),
-            ("detect_gnss_spoofing", "Module 39: GNSS Spoofing Detection"),
-        ];
-
-        for (name, desc) in &probes_sat {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(name.trim_start_matches("detect_"), 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} not found in eBPF object, skipping", name),
-            }
-        }
-    }
-
-    if enable_rf_defense {
-        let probes_rf = [
-            (
-                "detect_tetra_encryption",
-                "Module 40: TETRA Encryption Monitor",
-            ),
-            (
-                "detect_p25_control",
-                "Module 41: P25 Control Channel Integrity",
-            ),
-            (
-                "detect_ble_pairing",
-                "Module 42: BLE Pairing/Scanning Defense",
-            ),
-            (
-                "detect_zigbee_key",
-                "Module 43: Zigbee/Z-Wave Key Provisioning Monitor",
-            ),
-            ("detect_lorawan_join", "Module 44: LoRaWAN Join Integrity"),
-            ("detect_nbiot_rrc", "Module 45: NB-IoT/LTE-M RRC Anomaly"),
-            (
-                "detect_wifi_deauth",
-                "Module 46: WiFi Deauth/Disassoc Detection",
-            ),
-            (
-                "detect_wpa3_integrity",
-                "Module 47: WPA3/FT Integrity Monitor",
-            ),
-            ("detect_rke_jamming", "Module 48: RKE Jamming Detection"),
-            ("detect_uav_c2", "Module 49: UAV C2 Integrity Monitor"),
-            ("detect_pager_anomaly", "Module 50: Pager Signal Anomaly"),
-            (
-                "detect_broadcast_injection",
-                "Module 51: Broadcast Injection Detection",
-            ),
-            (
-                "detect_eas_spoofing",
-                "Module 52: Emergency Alert Spoofing Detection",
-            ),
-            (
-                "detect_oran_fronthaul",
-                "Module 53: O-RAN Fronthaul Integrity",
-            ),
-            ("detect_oran_ric", "Module 54: O-RAN RIC Security Monitor"),
-            ("detect_ais_integrity", "Module 55: AIS Signal Integrity"),
-        ];
-
-        for (name, desc) in &probes_rf {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(name.trim_start_matches("detect_"), 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} not found in eBPF object, skipping", name),
-            }
-        }
-    }
+    ensure!(
+        reports
+            .iter()
+            .any(|report| report.status == ProbeStatus::Active),
+        "no defense modules attached"
+    );
 
     // ── Alert event loop with full integration ──────────────────────────────
-    let mut correlation_engine = TelecomCorrelationEngine::new(correlation_window);
+    let mut pipeline = AlertPipeline::new(
+        correlation_window,
+        app_state.clone(),
+        adaptive.clone(),
+        bus.clone(),
+    );
     let (alert_tx, mut alert_rx) = mpsc::channel::<DefenseAlert>(4096);
 
     let correlation_running = running.clone();
-    let correlation_metrics = metrics.clone();
-    let correlation_bus = bus.clone();
-    let correlation_adaptive = adaptive.clone();
-    let correlation_store = app_state.clone();
 
     tokio::spawn(async move {
         while let Some(alert) = alert_rx.recv().await {
@@ -395,59 +250,24 @@ async fn main() -> Result<()> {
                 break;
             }
 
-            correlation_metrics.record_alert(alert.alert_type, alert.severity);
             let details = defense::format_alert_details(&alert);
-
-            // Persist raw alert
-            if let Some(ref store) = correlation_store.store {
-                let store = store.lock().await;
-                let _ = store.insert_alert(
-                    alert.timestamp_ns,
-                    alert.alert_type,
-                    alert.severity,
-                    alert.pid,
-                    alert.context,
-                    &details,
-                );
-            }
-
-            // Correlate
-            let threat = correlation_engine.ingest_alert(&alert);
-
-            if let Some(ref threat) = threat {
-                let adaptive_lock = correlation_adaptive.lock().await;
-                if !adaptive_lock.should_fire(&threat.category, threat.confidence) {
+            let threat = match pipeline.process(&alert).await {
+                Ok(threat) => threat,
+                Err(error) => {
+                    warn!("Alert processing failed: {error:#}");
                     continue;
                 }
-                drop(adaptive_lock);
-
-                correlation_metrics.record_threat(&format!("{:?}", threat.category));
-
-                // Persist threat
-                if let Some(ref store) = correlation_store.store {
-                    let store = store.lock().await;
-                    let _ = store.insert_threat(threat);
-                }
-
-                // Publish to bus
-                let envelope = ThreatEnvelope::from(threat);
-                let _ = correlation_bus
-                    .publish("threats", &BusMessage::Threat(envelope))
-                    .await;
-            }
+            };
 
             // Output
             if json_mode {
-                let threat_json = threat
-                    .as_ref()
-                    .map(|t| serde_json::to_string(t).unwrap_or_default());
                 println!(
-                    r#"{{"timestamp_ns":{},"alert_type":{},"severity":{},"details":"{}","threat":{}}}"#,
-                    alert.timestamp_ns,
-                    alert.alert_type,
-                    alert.severity,
-                    details,
-                    threat_json.as_deref().unwrap_or("null")
+                    "{}",
+                    serde_json::json!({
+                        "timestamp_ns": alert.timestamp_ns, "alert_type": alert.alert_type,
+                        "severity": alert.severity, "pid": alert.pid, "context": alert.context,
+                        "details": details, "threat": threat,
+                    })
                 );
             } else {
                 info!(
@@ -461,10 +281,6 @@ async fn main() -> Result<()> {
                     );
                 }
             }
-
-            // Update shared metrics for HTTP endpoints
-            let mut cm = correlation_store.correlation_metrics.write().await;
-            *cm = correlation_engine.metrics.clone();
         }
     });
 
@@ -497,14 +313,39 @@ async fn main() -> Result<()> {
     let mut ring_buf =
         RingBuf::try_from(alerts_map).context("failed to open DEFENSE_ALERTS ring buffer")?;
 
+    // Attach programs and open maps before privilege reduction.
+    if !cli.no_harden {
+        for warning in validate_environment() {
+            warn!("{}", warning);
+        }
+        harden_process(&SecurityConfig::default())?;
+    }
+
+    // Bind before starting the blocking reader, so bind failures cannot leave
+    // an unbounded reader alive while the Tokio runtime shuts down.
+    let listener = if config.server.enabled {
+        Some(
+            tokio::net::TcpListener::bind(&config.server.listen_addr)
+                .await
+                .context("failed to bind HTTP server")?,
+        )
+    } else {
+        None
+    };
+
     let rb_tx = alert_tx.clone();
     let rb_running = running.clone();
 
     tokio::task::spawn_blocking(move || {
         while rb_running.load(Ordering::Relaxed) {
             while let Some(item) = ring_buf.next() {
-                let ptr = item.as_ptr() as *const DefenseAlert;
-                let alert = unsafe { ptr.read_unaligned() };
+                let alert = match decode_alert(&item) {
+                    Ok(alert) => alert,
+                    Err(error) => {
+                        warn!("Discarding malformed ring buffer record: {error}");
+                        continue;
+                    }
+                };
                 if rb_tx.blocking_send(alert).is_err() {
                     return;
                 }
@@ -514,9 +355,21 @@ async fn main() -> Result<()> {
     });
     drop(alert_tx);
 
+    // Do not expose the API until attachment and ring-buffer setup succeed.
+    if let Some(listener) = listener {
+        let router = build_router(app_state.clone());
+        info!("HTTP server listening on {}", config.server.listen_addr);
+        tokio::spawn(async move {
+            if let Err(error) = axum::serve(listener, router).await {
+                warn!("HTTP server stopped: {error}");
+            }
+        });
+    }
+
     info!("StaticZero Defense Engine running. Press Ctrl+C to stop.");
-    signal::ctrl_c().await?;
+    let shutdown = signal::ctrl_c().await;
     running.store(false, Ordering::SeqCst);
+    shutdown?;
     info!("Shutting down.");
     Ok(())
 }

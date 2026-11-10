@@ -7,6 +7,8 @@
 
 #![no_std]
 
+pub mod modem;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct RootkitConfig {

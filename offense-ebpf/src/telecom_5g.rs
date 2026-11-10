@@ -22,6 +22,7 @@ const NRF_PORT: u16 = 7778;
 const AUSF_PORT: u16 = 7779;
 const UDM_PORT: u16 = 7780;
 const PC5_PORT: u16 = 38472;
+#[allow(dead_code)] // documented PFCP port (SMF<->UPF)
 const PFCP_PORT: u16 = 8805;
 
 fn fnv_hash_u64(a: u64, b: u64) -> u64 {
@@ -53,9 +54,8 @@ fn try_pbch_sib_spoof(ctx: &ProbeContext) -> Result<u32, i64> {
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
 
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let first_bytes: [u8; 4] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 4]).map_err(|e| e as i64)?
-    };
+    let first_bytes: [u8; 4] =
+        unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 4])? };
 
     // MIB (PBCH) magic: 0xA0 prefix for broadcast injection
     if first_bytes[0] == 0xA0 || first_bytes[0] == 0xB0 {
@@ -91,9 +91,7 @@ fn try_rrc_meas_manipulate(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 8] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 8] = unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 8])? };
 
     // RRC MeasurementReport: message type 0x08 in UL-DCCH
     if hdr[0] == 0x08 || hdr[0] == 0x0A {
@@ -339,9 +337,8 @@ fn try_oauth2_theft(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    let hdr: [u8; 16] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 16] =
+        unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16])? };
 
     // Look for "Bearer " or "access_token" patterns in HTTP/2 headers
     if (hdr[0] == b'B' && hdr[1] == b'e' && hdr[2] == b'a' && hdr[3] == b'r')
@@ -405,7 +402,7 @@ fn try_jamming_evasion(ctx: &XdpContext) -> Result<u32, i64> {
     let dst_port = unsafe { u16::from_be(*((udp_hdr + 2) as *const u16)) };
 
     // IQ sample streams on custom SDR port range
-    if dst_port >= 9000 && dst_port <= 9100 {
+    if (9000..=9100).contains(&dst_port) {
         let payload = udp_hdr + UDP_HDR_LEN;
         let sample_marker = unsafe { u32::from_be(*((payload) as *const u32)) };
 
@@ -444,9 +441,8 @@ fn try_mimo_fingerprint(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let buf_ptr: *const u8 = ctx.arg(1).ok_or(0i64)?;
-    let hdr: [u8; 12] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 12]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 12] =
+        unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 12])? };
 
     // CSI report indicator byte
     if hdr[0] == 0xC5 || hdr[0] == 0xC6 {
@@ -560,9 +556,8 @@ fn try_aka_downgrade(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    let hdr: [u8; 16] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 16] =
+        unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16])? };
 
     // AUSF authentication response — EAP-AKA' indicator
     // NAS 5GMM: Authentication Request type=0x56, EAP method=50 (EAP-AKA')
@@ -613,9 +608,8 @@ fn try_suci_replay(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    let hdr: [u8; 16] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 16] =
+        unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16])? };
 
     // SUCI structure: protection scheme 0x01 (ECIES profile A/B)
     if hdr[0] == 0x01 || hdr[0] == 0x02 {
@@ -668,9 +662,8 @@ fn try_arpf_probe(ctx: &ProbeContext) -> Result<u32, i64> {
         return Ok(0);
     }
 
-    let hdr: [u8; 16] = unsafe {
-        bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16]).map_err(|e| e as i64)?
-    };
+    let hdr: [u8; 16] =
+        unsafe { bpf_probe_read_kernel(&*buf_ptr as *const u8 as *const [u8; 16])? };
 
     // UDM/ARPF interface: Nudm_UEAuthentication service
     // HTTP/2 path pattern for /nudm-ueau/v1/suci-0-*/security-information

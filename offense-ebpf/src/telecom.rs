@@ -17,8 +17,11 @@ const ETH_HDR_LEN: usize = 14;
 const IP_HDR_LEN: usize = 20;
 const UDP_HDR_LEN: usize = 8;
 const GTP_PORT: u16 = 2152;
+#[allow(dead_code)] // documented SS7/SIGTRAN port (M3UA/SCTP)
 const SS7_SCTP_PORT: u16 = 2905;
+#[allow(dead_code)] // documented Diameter port (S6a/S6b)
 const DIAMETER_PORT: u16 = 3868;
+#[allow(dead_code)] // documented NGAP port (AMF<->gNB)
 const NGAP_PORT: u16 = 38412;
 
 // ──────────────────────────────────────────────
@@ -469,7 +472,7 @@ fn try_nas_intercept(ctx: &ProbeContext) -> Result<u32, i64> {
     let buf_ptr: u64 = unsafe { ctx.arg(0).ok_or(1i64)? };
     let buf_len: u32 = unsafe { ctx.arg(1).ok_or(1i64)? };
 
-    if buf_len < 2 || buf_len > 512 {
+    if !(2..=512).contains(&buf_len) {
         return Ok(0);
     }
 

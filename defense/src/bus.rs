@@ -54,18 +54,23 @@ impl From<&CorrelatedThreat> for ThreatEnvelope {
 }
 
 /// Trait for publishing messages to the bus
+// async-trait's macro expansion adds `#[must_use]` to the generated methods,
+// which double-marks `Result`/`Option` returns.
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait MessagePublisher: Send + Sync {
     async fn publish(&self, topic: &str, message: &BusMessage) -> Result<()>;
 }
 
 /// Trait for subscribing to messages from the bus
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait MessageSubscriber: Send + Sync {
     async fn subscribe(&self, topic: &str) -> Result<Box<dyn MessageStream>>;
 }
 
 /// Stream of messages from a subscription
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait MessageStream: Send {
     async fn next(&mut self) -> Option<BusMessage>;

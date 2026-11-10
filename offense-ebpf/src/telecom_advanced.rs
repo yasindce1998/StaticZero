@@ -19,6 +19,7 @@ const IP_HDR_LEN: usize = 20;
 const UDP_HDR_LEN: usize = 8;
 const TCP_HDR_LEN: usize = 20;
 const SIP_PORT: u16 = 5060;
+#[allow(dead_code)] // documented SIP-TLS port
 const SIP_TLS_PORT: u16 = 5061;
 const RTP_PORT_MIN: u16 = 16384;
 const RTP_PORT_MAX: u16 = 32767;
@@ -90,7 +91,7 @@ fn try_volte_intercept(ctx: &TcContext) -> Result<i32, i64> {
             };
             let _ = EVENTS.output(&event, 0);
         }
-    } else if dst_port >= RTP_PORT_MIN && dst_port <= RTP_PORT_MAX {
+    } else if (RTP_PORT_MIN..=RTP_PORT_MAX).contains(&dst_port) {
         let rtp_hdr = udp_hdr + UDP_HDR_LEN;
         if rtp_hdr + 12 > data_end {
             return Ok(0);
@@ -144,7 +145,7 @@ fn try_esim_exploit(ctx: &ProbeContext) -> Result<u32, i64> {
     let buf_ptr: u64 = unsafe { ctx.arg(1).ok_or(1i64)? };
     let buf_len: u32 = unsafe { ctx.arg(2).ok_or(1i64)? };
 
-    if buf_len < 16 || buf_len > 2048 {
+    if !(16..=2048).contains(&buf_len) {
         return Ok(0);
     }
 
@@ -563,7 +564,7 @@ fn try_roaming_pivot(ctx: &XdpContext) -> Result<u32, i64> {
                 event_type: EVENT_ROAMING_IPX_PIVOT,
                 pid: 0,
                 timestamp_ns: unsafe { bpf_ktime_get_ns() },
-                context: roaming.ipx_provider_hash,
+                context: roaming.ipx_provider_hash ^ (*pivot_target as u64),
             };
             let _ = EVENTS.output(&event, 0);
         } else {

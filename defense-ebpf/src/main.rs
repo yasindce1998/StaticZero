@@ -774,11 +774,7 @@ fn try_detect_rf_fingerprint(ctx: &ProbeContext) -> Result<u32, i64> {
         let mut anomaly_score: u32 = 0;
 
         // IQ variance deviation
-        let iq_diff = if iq_variance > baseline.iq_variance {
-            iq_variance - baseline.iq_variance
-        } else {
-            baseline.iq_variance - iq_variance
-        };
+        let iq_diff = iq_variance.abs_diff(baseline.iq_variance);
         if iq_diff > RF_IQ_VARIANCE_THRESHOLD {
             anomaly_score += 2;
         }
@@ -1223,18 +1219,13 @@ fn try_detect_dvbs2_anomaly(ctx: &ProbeContext) -> Result<u32, i64> {
         anomaly = true;
     }
 
-    if symbol_rate != 0 && (symbol_rate < DVB_SYMBOL_RATE_MIN || symbol_rate > DVB_SYMBOL_RATE_MAX)
-    {
+    if symbol_rate != 0 && !(DVB_SYMBOL_RATE_MIN..=DVB_SYMBOL_RATE_MAX).contains(&symbol_rate) {
         anomaly = true;
     }
 
     if let Some(baseline) = unsafe { SAT_CARRIER_BASELINE.get(&carrier_id) } {
         let prev_modcod = *baseline;
-        let diff = if modcod > prev_modcod {
-            modcod - prev_modcod
-        } else {
-            prev_modcod - modcod
-        };
+        let diff = modcod.abs_diff(prev_modcod);
         if diff > 5 {
             anomaly = true;
         }
@@ -1294,11 +1285,7 @@ fn try_detect_ntn_anomaly(ctx: &ProbeContext) -> Result<u32, i64> {
     }
 
     if let Some(prev_ta) = unsafe { NTN_TA_BASELINE.get(&cell_id) } {
-        let diff = if ta_value > *prev_ta {
-            ta_value - *prev_ta
-        } else {
-            *prev_ta - ta_value
-        };
+        let diff = ta_value.abs_diff(*prev_ta);
         if diff > NTN_TA_JUMP_THRESHOLD {
             anomaly = true;
         }
@@ -1506,11 +1493,7 @@ fn try_detect_aviation_integrity(ctx: &ProbeContext) -> Result<u32, i64> {
 
     if let Some(prev_packed) = unsafe { ADSB_TRACK_HISTORY.get(&icao_addr) } {
         let prev_alt = (*prev_packed >> 32) as u32;
-        let alt_diff = if altitude > prev_alt {
-            altitude - prev_alt
-        } else {
-            prev_alt - altitude
-        };
+        let alt_diff = altitude.abs_diff(prev_alt);
         if alt_diff > ADSB_MAX_CLIMB_RATE_FPM {
             anomaly = true;
         }
@@ -1570,16 +1553,12 @@ fn try_detect_gnss_spoofing(ctx: &ProbeContext) -> Result<u32, i64> {
 
     let mut anomaly = false;
 
-    if cn0 > GNSS_CN0_MAX || cn0 < GNSS_CN0_MIN {
+    if !(GNSS_CN0_MIN..=GNSS_CN0_MAX).contains(&cn0) {
         anomaly = true;
     }
 
     if let Some(baseline_cn0) = unsafe { GNSS_CN0_BASELINE.get(&prn_key) } {
-        let diff = if cn0 > *baseline_cn0 {
-            cn0 - *baseline_cn0
-        } else {
-            *baseline_cn0 - cn0
-        };
+        let diff = cn0.abs_diff(*baseline_cn0);
         if diff > GNSS_CN0_ANOMALY_THRESHOLD {
             anomaly = true;
         }

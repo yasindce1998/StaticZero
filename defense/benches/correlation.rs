@@ -43,7 +43,7 @@ fn bench_correlation_multi_cell(c: &mut Criterion) {
         b.iter(|| {
             let mut engine = TelecomCorrelationEngine::new(60);
             for i in 0..100u64 {
-                let cell_id = (i % 10) as u64;
+                let cell_id = i % 10;
                 let alert_type = (i % 24 + 1) as u32;
                 let alert = make_alert(alert_type, 3, cell_id, i * 100_000_000);
                 black_box(engine.ingest_alert(&alert));
@@ -57,7 +57,7 @@ fn bench_sustained_load(c: &mut Criterion) {
         b.iter(|| {
             let mut engine = TelecomCorrelationEngine::new(5);
             for i in 0..1000u64 {
-                let cell_id = (i % 50) as u64;
+                let cell_id = i % 50;
                 let alert_type = (i % 24 + 1) as u32;
                 let severity = (i % 4 + 1) as u32;
                 let alert = make_alert(alert_type, severity, cell_id, i * 10_000_000);

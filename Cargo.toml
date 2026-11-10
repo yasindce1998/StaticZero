@@ -6,5 +6,27 @@ members = [
     "defense-ebpf",
     "defense",
     "tools",
+    "xtask",
+]
+# The *-ebpf crates only compile for the bpfel-unknown-none target
+# (see `cargo xtask build-ebpf`). Plain cargo commands at the workspace
+# root build the user-space crates only.
+default-members = [
+    "common",
+    "offense",
+    "defense",
+    "tools",
 ]
 resolver = "2"
+
+# eBPF crates are compiled with the nightly toolchain for bpfel-unknown-none
+# (see xtask). Profiles must live at the workspace root to take effect.
+[profile.release.package.staticzero-offense-ebpf]
+opt-level = 2
+debug = false
+strip = "none"
+
+[profile.release.package.staticzero-defense-ebpf]
+opt-level = 2
+debug = false
+strip = "none"

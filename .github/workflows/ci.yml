@@ -33,17 +33,43 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Check defense crate
-        run: cargo check -p staticzero-defense
+        run: cargo check -p staticzero-defense --all-targets
       - name: Check common crate
-        run: cargo check -p staticzero-common --features user
+        run: cargo check -p staticzero-common --features user --all-targets
       - name: Check tools crate
-        run: cargo check -p staticzero-tools
+        run: cargo check -p staticzero-tools --all-targets
+      - name: Check offense crate
+        run: cargo check -p staticzero-offense --all-targets
       - name: Clippy defense
-        run: cargo clippy -p staticzero-defense -- -D warnings
+        run: cargo clippy -p staticzero-defense --all-targets -- -D warnings
       - name: Clippy common
-        run: cargo clippy -p staticzero-common --features user -- -D warnings
+        run: cargo clippy -p staticzero-common --features user --all-targets -- -D warnings
       - name: Clippy tools
-        run: cargo clippy -p staticzero-tools -- -D warnings
+        run: cargo clippy -p staticzero-tools --all-targets -- -D warnings
+      - name: Clippy offense
+        run: cargo clippy -p staticzero-offense --all-targets -- -D warnings
+
+  ebpf:
+    name: Build eBPF objects
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM (bpf-linker dependency)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-19-dev libpolly-19-dev clang-19
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src, clippy
+      - name: Install bpf-linker
+        run: cargo install bpf-linker --locked
+      - uses: Swatinem/rust-cache@v2
+      - name: Build eBPF programs (offense + defense)
+        run: cargo xtask build-ebpf --release
+      - name: Clippy eBPF programs
+        run: |
+          cargo +nightly clippy -p staticzero-offense-ebpf --target bpfel-unknown-none -Z build-std=core -- -D warnings
+          cargo +nightly clippy -p staticzero-defense-ebpf --target bpfel-unknown-none -Z build-std=core -- -D warnings
 
   test:
     name: Tests
@@ -53,7 +79,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
-        run: cargo test -p staticzero-defense -p staticzero-common -p staticzero-tools
+        run: cargo test
 
   deny:
     name: Supply Chain (cargo-deny)

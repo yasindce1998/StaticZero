@@ -79,6 +79,10 @@ jobs:
         run: |
           cargo +nightly clippy -p staticzero-offense-ebpf --target bpfel-unknown-none -Z build-std=core -- -D warnings
           cargo +nightly clippy -p staticzero-defense-ebpf --target bpfel-unknown-none -Z build-std=core -- -D warnings
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Passive defense smoke test (disposable runner VM)
+        timeout-minutes: 5
+        run: bash scripts/defense_smoke.sh
 
   test:
     name: Tests

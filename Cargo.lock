@@ -1555,6 +1555,7 @@ dependencies = [
  "axum",
  "aya 0.12.0",
  "aya-log",
+ "aya-obj 0.1.0",
  "bytes",
  "chrono",
  "clap",
@@ -1568,6 +1569,7 @@ dependencies = [
  "staticzero-common",
  "tokio",
  "toml",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

@@ -8,8 +8,11 @@
 pub mod adaptive;
 pub mod bus;
 pub mod config;
+pub mod doctor;
 pub mod metrics;
 pub mod persistence;
+pub mod pipeline;
+pub mod probes;
 pub mod security;
 pub mod server;
 
@@ -51,7 +54,7 @@ pub fn format_alert_details(alert: &DefenseAlert) -> String {
         ALERT_CELL_ANOMALY => format!("cell_id={}, anomaly_flags={}", alert.context, detail_u64),
         ALERT_GTP_ANOMALY => format!("teid={}, rate={}", alert.context, detail_u64),
         ALERT_SS7_ANOMALY => format!("msg_type={}, source_gt={}", alert.context, detail_u64),
-        ALERT_MODEM_TAMPER => format!("pid={}, access_type={}", alert.context, detail_u64),
+        ALERT_MODEM_TAMPER => format!("pid={}, access_type={}", alert.pid, detail_u64),
         ALERT_NAS_REPLAY => format!("seq={}, replay_delta={}", alert.context, detail_u64),
         ALERT_VOLTE_FRAUD => format!("call_rate={}, threshold={}", alert.context, detail_u64),
         ALERT_ESIM_TAMPER => format!("eid_hash={}, op_type={}", alert.context, detail_u64),

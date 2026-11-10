@@ -3,10 +3,10 @@
 #![allow(unused_unsafe)]
 
 use aya_ebpf::{
-    helpers::{bpf_get_current_pid_tgid, bpf_ktime_get_ns},
-    macros::{kprobe, map},
+    helpers::{bpf_get_current_pid_tgid, bpf_ktime_get_ns, bpf_probe_read_user_str_bytes},
+    macros::{kprobe, map, tracepoint},
     maps::{Array, HashMap, RingBuf},
-    programs::ProbeContext,
+    programs::{ProbeContext, TracePointContext},
 };
 use common::{
     AisVesselState, CellBaseline, CellInfo, DefenseAlert, HandoverBaseline, LmrBaseline,
@@ -14,12 +14,12 @@ use common::{
     ALERT_AVIATION_INTEGRITY, ALERT_BLE_PAIRING, ALERT_BROADCAST_INJECTION, ALERT_CELL_ANOMALY,
     ALERT_DOWNGRADE_ATTACK, ALERT_DVBS2_ANOMALY, ALERT_EAS_SPOOFING, ALERT_ESIM_TAMPER,
     ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY, ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER,
-    ALERT_LEO_SIGNALING, ALERT_LORAWAN_JOIN, ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_NBIOT_RRC,
-    ALERT_NTN_ANOMALY, ALERT_ORAN_FRONTHAUL, ALERT_ORAN_RIC, ALERT_P25_CONTROL,
-    ALERT_PAGER_ANOMALY, ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT, ALERT_RKE_JAMMING,
-    ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM,
-    ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_STARLINK_AUTH, ALERT_TETRA_ENCRYPTION,
-    ALERT_UAV_C2, ALERT_VOLTE_FRAUD, ALERT_VSAT_INTEGRITY, ALERT_WIFI_DEAUTH, ALERT_WPA3_INTEGRITY,
+    ALERT_LEO_SIGNALING, ALERT_LORAWAN_JOIN, ALERT_NAS_REPLAY, ALERT_NBIOT_RRC, ALERT_NTN_ANOMALY,
+    ALERT_ORAN_FRONTHAUL, ALERT_ORAN_RIC, ALERT_P25_CONTROL, ALERT_PAGER_ANOMALY,
+    ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT, ALERT_RKE_JAMMING, ALERT_ROAMING_ANOMALY,
+    ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION,
+    ALERT_SS7_ANOMALY, ALERT_STARLINK_AUTH, ALERT_TETRA_ENCRYPTION, ALERT_UAV_C2,
+    ALERT_VOLTE_FRAUD, ALERT_VSAT_INTEGRITY, ALERT_WIFI_DEAUTH, ALERT_WPA3_INTEGRITY,
     ALERT_ZIGBEE_KEY,
 };
 
@@ -38,6 +38,13 @@ static CELL_CURRENT: Array<CellInfo> = Array::with_max_entries(4, 0);
 
 #[map]
 static MODEM_ACCESS_PIDS: HashMap<u32, u8> = HashMap::with_max_entries(32, 0);
+
+#[map]
+static MODEM_MONITORED_PATH: Array<[u8; common::modem::MODEM_PATH_BYTES]> =
+    Array::with_max_entries(1, 0);
+
+#[map]
+static MODEM_FILENAME_OFFSET: Array<u32> = Array::with_max_entries(1, 0);
 
 #[map]
 static IDENTITY_REQ_COUNT: HashMap<u32, u32> = HashMap::with_max_entries(64, 0);
@@ -496,38 +503,32 @@ fn try_detect_ss7_anomaly(ctx: &ProbeContext) -> Result<u32, i64> {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MODULE 22: Modem Interface Tamper Detection (Alert 25)
-// Monitor access to modem device files (/dev/smd*, /dev/qmi*, /dev/at*).
-// Hook: kprobe on modem device open/ioctl
+// Observe openat attempts using an exact configured absolute pathname.
+// The loader validates the tracefs filename field and supplies its offset.
+// Does not resolve symlinks/relative paths, inspect ioctl, or block access.
 // ══════════════════════════════════════════════════════════════════════════════
 
-#[kprobe]
-pub fn detect_modem_tamper(ctx: ProbeContext) -> u32 {
+#[tracepoint]
+pub fn detect_modem_tamper(ctx: TracePointContext) -> u32 {
     try_detect_modem_tamper(&ctx).unwrap_or_default()
 }
 
-fn try_detect_modem_tamper(ctx: &ProbeContext) -> Result<u32, i64> {
-    let pid_tgid = bpf_get_current_pid_tgid();
-    let pid = (pid_tgid >> 32) as u32;
-    let now = unsafe { bpf_ktime_get_ns() };
-
-    let fd: u32 = unsafe { ctx.arg(0).ok_or(1i64)? };
-
-    // Check if this PID is authorized to access modem
-    if unsafe { MODEM_ACCESS_PIDS.get(&pid) }.is_none() {
-        let alert = DefenseAlert {
-            alert_type: ALERT_MODEM_TAMPER,
-            severity: 4,
-            pid,
-            _pad: 0,
-            timestamp_ns: now,
-            context: fd as u64,
-            details: {
-                let mut d = [0u8; 16];
-                d[0..4].copy_from_slice(&pid.to_le_bytes());
-                d[4..8].copy_from_slice(&fd.to_le_bytes());
-                d
-            },
-        };
+fn try_detect_modem_tamper(ctx: &TracePointContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let offset = *MODEM_FILENAME_OFFSET.get(0).ok_or(1i64)?;
+    if !(8..=256).contains(&offset) {
+        return Ok(0);
+    }
+    let filename: u64 = unsafe { ctx.read_at(offset as usize)? };
+    let mut requested = [0u8; common::modem::MODEM_PATH_BYTES];
+    unsafe { bpf_probe_read_user_str_bytes(filename as *const u8, &mut requested)? };
+    let monitored = MODEM_MONITORED_PATH.get(0).ok_or(1i64)?;
+    let authorized = unsafe { MODEM_ACCESS_PIDS.get(&pid) }.is_some();
+    if let Some(alert) =
+        common::modem::modem_access_alert(&requested, monitored, authorized, pid, unsafe {
+            bpf_ktime_get_ns()
+        })
+    {
         let _ = DEFENSE_ALERTS.output(&alert, 0);
     }
 

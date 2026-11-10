@@ -54,14 +54,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install LLVM (bpf-linker dependency)
+      # bpf-linker 0.13 builds against LLVM 23 (llvm-sys 231); Ubuntu stock
+      # repos only carry older LLVM, so pull 23 from the official apt repo.
+      - name: Install LLVM 23 (bpf-linker dependency)
         run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-23 main" | sudo tee /etc/apt/sources.list.d/llvm-23.list
           sudo apt-get update
-          sudo apt-get install -y llvm-19-dev libpolly-19-dev clang-19
+          sudo apt-get install -y llvm-23-dev libpolly-23-dev clang-23
+          echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rust-src, clippy
       - name: Install bpf-linker
+        env:
+          LLVM_PREFIX: /usr/lib/llvm-23
         run: cargo install bpf-linker --locked
       - uses: Swatinem/rust-cache@v2
       - name: Build eBPF programs (offense + defense)

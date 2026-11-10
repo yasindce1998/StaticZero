@@ -4,21 +4,25 @@ all-features = false
 no-default-features = false
 
 [advisories]
-vulnerability = "deny"
+yanked = "deny"
+ignore = []
 
 [licenses]
-unlicensed = "deny"
+confidence-threshold = 0.93
+# Note: copyleft licenses are rejected implicitly — anything not in this
+# allow-list is denied (the old `copyleft`/`unlicensed`/`deny` keys were
+# removed in cargo-deny 0.17+).
 allow = [
     "MIT",
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    "CC0-1.0",
     "ISC",
     "Unicode-3.0",
-    "Unicode-DFS-2016",
     "Zlib",
 ]
-copyleft = "deny"
 
 [[licenses.clarify]]
 name = "ring"

@@ -1,6 +1,7 @@
 [package]
 name = "staticzero-offense-ebpf"
 version = "0.4.0"
+license = "MIT"
 edition = "2021"
 description = "eBPF programs for telecom protocol exploitation research (2G-5G)"
 

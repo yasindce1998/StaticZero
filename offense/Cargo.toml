@@ -1,6 +1,7 @@
 [package]
 name = "staticzero-offense"
 version = "0.4.0"
+license = "MIT"
 edition = "2021"
 description = "User-space loader for StaticZero telecom exploitation eBPF programs"
 

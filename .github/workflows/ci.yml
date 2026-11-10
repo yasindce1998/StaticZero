@@ -51,7 +51,9 @@ jobs:
 
   ebpf:
     name: Build eBPF objects
-    runs-on: ubuntu-latest
+    # Pinned: the LLVM 23 apt repo below targets Ubuntu 24.04 (noble).
+    # ubuntu-latest now resolves to 26.04 where those packages conflict.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       # bpf-linker 0.13 builds against LLVM 23 (llvm-sys 231); Ubuntu stock

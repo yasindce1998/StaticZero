@@ -39,8 +39,10 @@ const PERF_FLAG_FD_CLOEXEC: libc::c_ulong = 8;
 const PERF_EVENT_IOC_ENABLE: libc::c_ulong = 0x2400;
 /// `_IO('$', 1)`
 const PERF_EVENT_IOC_DISABLE: libc::c_ulong = 0x2401;
-/// `_IOW('$', 5, __u32)`
-const PERF_EVENT_IOC_SET_BPF: libc::c_ulong = 0x4004_2405;
+/// `_IOW('$', 8, __u32)` — ioctl number 8; 5 is SET_OUTPUT, which the kernel
+/// answers with ENOTTY. Values cross-checked against aya-obj's generated
+/// UAPI bindings (`AYA_PERF_EVENT_IOC_*`).
+const PERF_EVENT_IOC_SET_BPF: libc::c_ulong = 0x4004_2408;
 
 /// Owned perf event descriptors holding a kprobe program attached on every
 /// online CPU. Dropping disables the events and closes the descriptors, which
@@ -256,6 +258,15 @@ mod tests {
     #[test]
     fn attr_layout_matches_perf_attr_size_ver1() {
         assert_eq!(std::mem::size_of::<PerfEventAttr>(), 72);
+    }
+
+    /// Regression test: an earlier revision used ioctl number 5 (SET_OUTPUT)
+    /// for SET_BPF, which every kernel answers with ENOTTY.
+    #[test]
+    fn ioctl_numbers_match_the_kernel_uapi() {
+        assert_eq!(PERF_EVENT_IOC_ENABLE, 0x2400); // _IO('$', 0)
+        assert_eq!(PERF_EVENT_IOC_DISABLE, 0x2401); // _IO('$', 1)
+        assert_eq!(PERF_EVENT_IOC_SET_BPF, 0x4004_2408); // _IOW('$', 8, __u32)
     }
 
     #[test]

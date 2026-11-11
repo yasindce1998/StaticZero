@@ -193,9 +193,11 @@ async fn shared_pipeline_preserves_correlated_threat_delivery() -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-/// Attach the diagnostic liveness probe alongside the modem probe so that a
+/// Attach the diagnostic liveness probes alongside the modem probe so that a
 /// failed assertion can distinguish "tracepoint never fired" from "filename
-/// read or path match failed". The diagnostic writes no alerts.
+/// read or path match failed". `diag_close` targets sys_enter_close, which
+/// has no user-pointer arguments and therefore bypasses the kernel's syscall
+/// user-fault copy machinery. The diagnostics write no alerts.
 fn configure_diagnostics(bpf: &mut aya::Bpf, pid: u32) -> Result<()> {
     use aya::maps::HashMap;
     use aya::programs::TracePoint;
@@ -204,13 +206,21 @@ fn configure_diagnostics(bpf: &mut aya::Bpf, pid: u32) -> Result<()> {
             .context("DIAG_PID map missing from eBPF object")?,
     )?
     .insert(0, pid, 0)?;
-    let diag: &mut TracePoint = bpf
-        .program_mut("diag_openat")
-        .context("diag_openat missing from eBPF object")?
-        .try_into()?;
-    diag.load().context("verifier rejected diag_openat")?;
-    diag.attach("syscalls", "sys_enter_openat")
-        .context("attaching diag_openat")?;
+    for program in ["diag_openat", "diag_close"] {
+        let diag: &mut TracePoint = bpf
+            .program_mut(program)
+            .with_context(|| format!("{program} missing from eBPF object"))?
+            .try_into()?;
+        diag.load()
+            .with_context(|| format!("verifier rejected {program}"))?;
+        let (category, event) = if program == "diag_openat" {
+            ("syscalls", "sys_enter_openat")
+        } else {
+            ("syscalls", "sys_enter_close")
+        };
+        diag.attach(category, event)
+            .with_context(|| format!("attaching {program}"))?;
+    }
     Ok(())
 }
 
@@ -221,6 +231,14 @@ fn diagnostics(bpf: &aya::Bpf) -> String {
     use aya::maps::HashMap;
     let count: Option<u64> = bpf
         .map("DIAG_COUNT")
+        .and_then(|map| HashMap::<_, u32, u64>::try_from(map).ok())
+        .and_then(|map| map.get(&0, 0).ok());
+    let other: Option<u64> = bpf
+        .map("DIAG_OTHER_COUNT")
+        .and_then(|map| HashMap::<_, u32, u64>::try_from(map).ok())
+        .and_then(|map| map.get(&0, 0).ok());
+    let closes: Option<u64> = bpf
+        .map("DIAG_CLOSE_COUNT")
         .and_then(|map| HashMap::<_, u32, u64>::try_from(map).ok())
         .and_then(|map| map.get(&0, 0).ok());
     let read_rc: Option<i64> = bpf
@@ -236,8 +254,21 @@ fn diagnostics(bpf: &aya::Bpf) -> String {
 
     let mut out = match count {
         Some(count) => format!("diag_openat invocations for this pid: {count}"),
-        None => "diag_openat state unreadable".to_string(),
+        None => match bpf.map("DIAG_COUNT") {
+            Some(_) => "diag_openat never executed for this pid: the kernel dropped \
+                 every sys_enter_openat event before the BPF program array ran"
+                .to_string(),
+            None => "DIAG_COUNT map missing from eBPF object".to_string(),
+        },
     };
+    out.push_str(&format!(
+        ", openat invocations by other pids: {}",
+        other.unwrap_or(0)
+    ));
+    out.push_str(&format!(
+        ", sys_enter_close invocations for this pid: {}",
+        closes.unwrap_or(0)
+    ));
     match read_rc {
         Some(rc) => {
             out.push_str(&format!(", last filename read rc: {rc}"));
@@ -377,19 +408,71 @@ async fn privileged_modem_openat_smoke() -> Result<()> {
     assert_pipeline(&fixture, alerts[0]).await
 }
 
+#[cfg(target_os = "linux")]
+fn online_cpus() -> Vec<u32> {
+    let text = std::fs::read_to_string("/sys/devices/system/cpu/online").unwrap_or_default();
+    let mut cpus = Vec::new();
+    for part in text.trim().split(',') {
+        if part.is_empty() {
+            continue;
+        }
+        if let Some((start, end)) = part.split_once('-') {
+            if let (Ok(start), Ok(end)) = (start.trim().parse::<u32>(), end.trim().parse::<u32>()) {
+                cpus.extend(start..=end);
+            }
+        } else if let Ok(cpu) = part.trim().parse::<u32>() {
+            cpus.push(cpu);
+        }
+    }
+    cpus
+}
+
+#[cfg(target_os = "linux")]
+fn pin_to_cpu(cpu: u32) -> Result<libc::cpu_set_t> {
+    let mut original = unsafe { std::mem::zeroed::<libc::cpu_set_t>() };
+    let rc = unsafe {
+        libc::sched_getaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &mut original)
+    };
+    ensure!(
+        rc == 0,
+        "sched_getaffinity failed: {}",
+        std::io::Error::last_os_error()
+    );
+    let mut pinned = unsafe { std::mem::zeroed::<libc::cpu_set_t>() };
+    unsafe { libc::CPU_SET(cpu as usize, &mut pinned) };
+    let rc = unsafe { libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &pinned) };
+    ensure!(
+        rc == 0,
+        "sched_setaffinity({cpu}) failed: {}",
+        std::io::Error::last_os_error()
+    );
+    Ok(original)
+}
+
+#[cfg(target_os = "linux")]
+fn restore_affinity(original: libc::cpu_set_t) {
+    unsafe {
+        libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &original);
+    }
+}
+
 /// Open `path` with `flags` and wait for exactly one modem-access alert,
-/// retrying the open a bounded number of times.
+/// retrying the open across the machine's online CPUs.
 ///
-/// Why a bounded, reported retry is legitimate here: kernels 7.0/7.1 can drop
-/// an individual `sys_enter_openat` event — including every attached BPF
-/// program — when the syscall user-fault copy in `trace_user_fault_read()`
-/// exhausts its retry guard. Both failure modes (a migration-thread livelock,
-/// and context-switch counter overcounting under load) are documented
-/// upstream, with a stable-bound fix posted and a second one still under
-/// discussion; the drop is per-event, scheduler-dependent, and outside this
-/// repository's control. Every lost attempt is printed with the diagnostic
-/// counter state, and exhausting all attempts is a hard failure, so a probe
-/// pipeline that never delivers still fails the test.
+/// Why a bounded, reported, CPU-rotating retry is legitimate here: kernels
+/// 7.0/7.1 copy syscall user-pointer arguments (openat's `filename`) in
+/// `perf_syscall_enter` via `trace_user_fault_read()`, a per-CPU scratch
+/// buffer with a preempt/migration retry guard. When the guard exhausts — a
+/// scheduler-dependent failure with two documented upstream modes (a
+/// migration-thread livelock, fixed stable-bound in March 2026, and
+/// context-switch counter overcounting under load, reported at fleet scale
+/// on 7.1 and still under discussion) — the kernel drops the entire
+/// syscall-enter event, including every attached BPF program. Observed drops
+/// persist per CPU: retrying the same open on a different CPU succeeds. The
+/// drop is outside this repository's control. Every lost attempt is printed
+/// with the diagnostic counter state and the CPU it ran on, and exhausting
+/// every online CPU is a hard failure, so a probe pipeline that never
+/// delivers still fails the test.
 #[cfg(target_os = "linux")]
 async fn watched_open_with_retry(
     ring: &mut aya::maps::RingBuf<aya::maps::MapData>,
@@ -397,32 +480,44 @@ async fn watched_open_with_retry(
     bpf: &aya::Bpf,
     flags: libc::c_int,
 ) -> Result<Vec<DefenseAlert>> {
-    const MAX_ATTEMPTS: usize = 5;
-    for attempt in 1..=MAX_ATTEMPTS {
+    const MIN_ATTEMPTS: usize = 5;
+    let cpus = online_cpus();
+    let attempts = cpus.len().max(MIN_ATTEMPTS);
+    for attempt in 1..=attempts {
+        // Pin to one CPU for the open itself so each attempt targets a
+        // different CPU; an unreadable CPU list falls back to unpinned opens.
+        let pinned = cpus
+            .get((attempt - 1) % cpus.len())
+            .copied()
+            .and_then(|cpu| pin_to_cpu(cpu).ok());
         openat_flags(path, flags)?;
+        let cpu_used = unsafe { libc::sched_getcpu() };
+        if let Some(original) = pinned {
+            restore_affinity(original);
+        }
         let alerts = collect(ring, Duration::from_secs(1)).await?;
         if alerts.len() == 1 {
             if attempt > 1 {
                 eprintln!(
-                    "watched open of {} delivered on attempt {attempt} of {MAX_ATTEMPTS} \
-                     (earlier attempts were dropped by the kernel's syscall-enter \
-                     user-copy retry guard; see DEFENSE_VALIDATION.md)",
+                    "watched open of {} delivered on attempt {attempt} of {attempts} \
+                     (cpu {cpu_used}; earlier attempts were dropped by the kernel's \
+                     syscall-enter user-copy retry guard; see DEFENSE_VALIDATION.md)",
                     path.display()
                 );
             }
             return Ok(alerts);
         }
         eprintln!(
-            "watched open of {}, attempt {attempt}/{MAX_ATTEMPTS}, produced {} \
-             alert(s): {}",
+            "watched open of {}, attempt {attempt}/{attempts} on cpu {cpu_used}, \
+             produced {} alert(s): {}",
             path.display(),
             alerts.len(),
             diagnostics(bpf)
         );
     }
     anyhow::bail!(
-        "watched open of {} produced no alert in {MAX_ATTEMPTS} attempts; the \
-         probe pipeline never delivered ({})",
+        "watched open of {} produced no alert across {attempts} attempts on every \
+         online CPU; the probe pipeline never delivered ({})",
         path.display(),
         diagnostics(bpf)
     )

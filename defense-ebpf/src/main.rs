@@ -549,6 +549,18 @@ static DIAG_PID: HashMap<u32, u32> = HashMap::with_max_entries(1, 0);
 #[map]
 static DIAG_COUNT: HashMap<u32, u64> = HashMap::with_max_entries(1, 0);
 
+/// Invocations by every *other* pid: shows whether the tracepoint delivers
+/// BPF for anyone else on this machine while our process is being dropped.
+#[map]
+static DIAG_OTHER_COUNT: HashMap<u32, u64> = HashMap::with_max_entries(1, 0);
+
+/// Invocations of sys_enter_close for this pid. close() takes no user-pointer
+/// arguments, so this tracepoint bypasses the syscall user-fault copy
+/// machinery entirely: if close events arrive while openat events do not, the
+/// user-fault copy path is what drops the openat events.
+#[map]
+static DIAG_CLOSE_COUNT: HashMap<u32, u64> = HashMap::with_max_entries(1, 0);
+
 /// bpf_probe_read_user_str return: string length on success, errno on failure,
 /// -1000 when the configured filename offset itself was invalid.
 #[map]
@@ -567,6 +579,8 @@ fn try_diag_openat(ctx: &TracePointContext) -> Result<u32, i64> {
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let watched = unsafe { DIAG_PID.get(&0).copied() }.unwrap_or(0);
     if watched == 0 || pid != watched {
+        let other = unsafe { DIAG_OTHER_COUNT.get(&0).copied() }.unwrap_or(0) + 1;
+        let _ = unsafe { DIAG_OTHER_COUNT.insert(&0, &other, 0) };
         return Ok(0);
     }
     let count = unsafe { DIAG_COUNT.get(&0).copied() }.unwrap_or(0) + 1;
@@ -588,6 +602,18 @@ fn try_diag_openat(ctx: &TracePointContext) -> Result<u32, i64> {
     let _ = unsafe { DIAG_READ_RC.insert(&0, &rc, 0) };
     let _ = unsafe { DIAG_PATH.insert(&0, &requested, 0) };
     Ok(0)
+}
+
+#[tracepoint]
+pub fn diag_close(_ctx: TracePointContext) -> u32 {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let watched = unsafe { DIAG_PID.get(&0).copied() }.unwrap_or(0);
+    if watched == 0 || pid != watched {
+        return 0;
+    }
+    let count = unsafe { DIAG_CLOSE_COUNT.get(&0).copied() }.unwrap_or(0) + 1;
+    let _ = unsafe { DIAG_CLOSE_COUNT.insert(&0, &count, 0) };
+    0
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

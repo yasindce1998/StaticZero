@@ -35,11 +35,21 @@ Limitations:
 
 ## Per-CPU attachment
 
-The loader attaches tracepoints by opening one perf event per online CPU
-(`defense::perf`). aya's stock `TracePoint::attach` opens a single perf event
-pinned to CPU 0, which silently misses every event executing on any other CPU;
-this was observed as a CI flake where identical code and kernel delivered zero
-alerts depending on which CPU the test thread was scheduled on.
+Tracepoint and kprobe programs are attached with a single perf event per
+probe, which is the canonical model used by aya and libbpf: the program is
+pinned into the tracepoint's *shared* program array (`tp_event->prog_array`)
+and executes on every CPU where the tracepoint or kprobe fires, regardless of
+which CPU the perf event was opened on. Pinning the same program into
+additional per-CPU perf events is rejected by the kernel with `EEXIST`
+(`bpf_prog_array_copy` refuses duplicate programs), so per-CPU attachment of
+a single program is impossible by design and unnecessary.
+
+The zero-alert CI flake that prompted this investigation (run 42878645556:
+identical tree and kernel, one runner passed, one delivered no alerts) is
+**not explained by CPU scoping** on the affected 7.0 kernel — v7.0 runs the
+BPF program array before the per-CPU perf event list check in
+`perf_syscall_enter`. Its root cause remains unidentified; it has not
+reproduced since. If it recurs, capture the full step log before re-running.
 
 ## Read-only preflight
 

@@ -20,7 +20,7 @@ use common::{
     EventHeader, GtpTunnelState, EVENT_GTP_TUNNEL_HIJACK, EVENT_PROTOCOL_DOWNGRADE,
     EVENT_RRC_REDIRECT,
 };
-use staticzero_offense::decode_event;
+use staticzero_offense::{attach_kprobe, decode_event};
 
 const TEID: u32 = 0x1122_3344;
 const ETH_P_ALL: u16 = 0x0003;
@@ -73,7 +73,8 @@ fn temp_dir() -> Result<PathBuf> {
 // (ARFCN) and consults the DOWNGRADE_TARGETS map. `fd_install(unsigned int fd,
 // struct file *)` takes the file descriptor as arg0, so programming the map
 // with a predictable fd and opening a file gives a deterministic, SMAP-safe
-// kernel-resident trigger: no user-memory reads are involved.
+// kernel-resident trigger: no user-memory reads are involved. Once attached,
+// the probe runs on every CPU via the tracepoint program array.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -99,20 +100,14 @@ async fn privileged_offense_kprobe_smoke() -> Result<()> {
 
     // Negative control first: a documented hook point that is not a mainline
     // kernel symbol must fail to attach rather than silently succeed.
-    let missing = staticzero_offense::attach_kprobe_all_cpus(
-        &mut bpf,
-        "shadow_at_cmd_inject",
-        "sdr_rx_callback",
-    );
+    let missing = attach_kprobe(&mut bpf, "shadow_at_cmd_inject", "sdr_rx_callback");
     ensure!(
         missing.is_err(),
         "attach to nonexistent symbol sdr_rx_callback unexpectedly succeeded"
     );
 
-    let attachment =
-        staticzero_offense::attach_kprobe_all_cpus(&mut bpf, "shadow_rrc_redirect", "fd_install")
-            .context("attaching shadow_rrc_redirect to fd_install")?;
-    ensure!(!attachment.is_empty(), "no per-CPU perf events attached");
+    attach_kprobe(&mut bpf, "shadow_rrc_redirect", "fd_install")
+        .context("attaching shadow_rrc_redirect to fd_install")?;
 
     // Trigger: any open() installs the predicted fd via fd_install.
     let trigger = std::fs::File::create(dir.join("trigger"))?;
@@ -137,7 +132,6 @@ async fn privileged_offense_kprobe_smoke() -> Result<()> {
     );
     ensure!(matching[0].timestamp_ns > 0);
 
-    drop(attachment);
     drop(ring);
     drop(bpf);
     std::fs::remove_dir_all(&dir).ok();

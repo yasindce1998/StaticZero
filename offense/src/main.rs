@@ -13,7 +13,7 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use common::EventHeader;
-use staticzero_offense::attach_kprobe_all_cpus;
+use staticzero_offense::attach_kprobe;
 
 #[derive(Parser, Debug)]
 #[command(name = "staticzero-offense")]
@@ -114,23 +114,22 @@ async fn main() -> Result<()> {
         .load_file(&cli.bpf_path)
         .context("failed to load eBPF object")?;
 
-    // Per-CPU kprobe attachments. Held until shutdown: dropping detaches.
+    // Attached kprobe symbol names (informational; the aya links live in the
+    // Bpf object and detach when it drops).
     let mut attachments = Vec::new();
 
-    /// Attach a kprobe on every online CPU; a missing kernel symbol or a
-    /// verifier rejection disables that one feature, never the whole loader.
+    /// Attach a kprobe; a missing kernel symbol or a verifier rejection
+    /// disables that one feature, never the whole loader.
     macro_rules! attach_kprobes {
         ($probes:expr) => {
             for (name, attach_point, desc) in &$probes {
-                match attach_kprobe_all_cpus(&mut bpf, name, attach_point) {
-                    Ok(attachment) => {
+                match attach_kprobe(&mut bpf, name, attach_point) {
+                    Ok(()) => {
                         info!(
-                            "{} enabled on {} cpu(s) via {}",
-                            desc,
-                            attachment.len(),
-                            attachment.symbol()
+                            "{} enabled via {} (probe runs on all CPUs)",
+                            desc, attach_point
                         );
-                        attachments.push(attachment);
+                        attachments.push(*attach_point);
                     }
                     Err(error) => {
                         warn!("{} ({}) not attached, skipping: {:#}", desc, name, error)

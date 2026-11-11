@@ -31,9 +31,10 @@ What `privileged_offense_kprobe_smoke` proves, on the real kernel:
 
 - The offense eBPF object loads and the verifier accepts `shadow_rrc_redirect`.
 - The probe attaches to `fd_install` (a real mainline symbol whose first
-  argument is the file descriptor) **on every online CPU** — aya's stock
-  `KProbe::attach` opens its perf event on CPU 0 only, which made every probe
-  a scheduler lottery. The loader now opens one perf event per CPU itself.
+  argument is the file descriptor). One perf event per probe is the canonical
+  model: the program is pinned into the tracepoint's shared program array and
+  runs on every CPU where the kprobe fires — the kernel rejects pinning the
+  same program into additional per-CPU events with EEXIST.
 - A negative control attaches to `sdr_rx_callback`, a documented hook point
   that is *not* a mainline kernel symbol; the attach must fail rather than
   silently succeed.
@@ -81,8 +82,6 @@ set but the device is missing, the test fails. Notes:
 - Opening a modem port may have side effects on some hardware (port resets,
   exclusive opens by ModemManager). Stop ModemManager or pick an unused port.
 - `/dev/cdc-wdm0` opens are non-destructive control-channel opens.
-- The defense loader now attaches its tracepoint per CPU, fixing the flake
-  where the probe only fired for syscalls that happened to run on CPU 0.
 
 ## 4. RF transmission smoke test (sdr-bridge)
 

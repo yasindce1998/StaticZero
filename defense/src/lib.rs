@@ -10,7 +10,6 @@ pub mod bus;
 pub mod config;
 pub mod doctor;
 pub mod metrics;
-pub mod perf;
 pub mod persistence;
 pub mod pipeline;
 pub mod probes;

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{ensure, Result};
+use anyhow::{ensure, Context, Result};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use common::modem::{modem_access_alert, MODEM_ACCESS_OPENAT};
@@ -263,11 +263,11 @@ async fn privileged_modem_openat_smoke() -> Result<()> {
         defense::doctor::openat_layout()?.1,
     )?;
     let mut ring = RingBuf::try_from(bpf.take_map("DEFENSE_ALERTS").unwrap())?;
-    let reports = attach_probes(&mut bpf, &selected);
+    let attached = attach_probes(&mut bpf, &selected);
     ensure!(
-        reports[0].status == ProbeStatus::Active,
+        attached.reports[0].status == ProbeStatus::Active,
         "attach failed: {:?}",
-        reports[0]
+        attached.reports[0]
     );
 
     openat(&fixture.directory.join("benign"))?;
@@ -298,6 +298,151 @@ async fn privileged_modem_openat_smoke() -> Result<()> {
         "allowlisted PID emitted an alert"
     );
     drop(ring);
+    drop(attached); // Detaches per-CPU perf events before unloading programs.
     drop(bpf); // Detaches before fixture/database cleanup.
     assert_pipeline(&fixture, alerts[0]).await
+}
+
+/// A real character device node (PTY slave in /dev/pts) instead of a plain
+/// file, so the monitored path is an actual device the kernel resolves
+/// through devtmpfs.
+struct Pty {
+    master: libc::c_int,
+    slave_path: PathBuf,
+}
+
+impl Pty {
+    fn new() -> Result<Self> {
+        let master = unsafe { libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY) };
+        ensure!(
+            master >= 0,
+            "posix_openpt failed: {}",
+            std::io::Error::last_os_error()
+        );
+        unsafe {
+            libc::grantpt(master);
+            libc::unlockpt(master);
+        }
+        let mut name = [0u8; 64];
+        let rc =
+            unsafe { libc::ptsname_r(master, name.as_mut_ptr() as *mut libc::c_char, name.len()) };
+        ensure!(
+            rc == 0,
+            "ptsname_r failed: {}",
+            std::io::Error::from_raw_os_error(rc)
+        );
+        let len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
+        Ok(Self {
+            master,
+            slave_path: PathBuf::from(String::from_utf8_lossy(&name[..len]).into_owned()),
+        })
+    }
+
+    fn slave(&self) -> &PathBuf {
+        &self.slave_path
+    }
+}
+
+impl Drop for Pty {
+    fn drop(&mut self) {
+        unsafe {
+            libc::close(self.master);
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+async fn modem_device_smoke(device: &std::path::Path) -> Result<()> {
+    use aya::maps::RingBuf;
+    use defense::probes::{attach_probes, configure_modem_probe, select_probes, ProbeStatus};
+    let fixture = Fixture::new()?;
+    let object = std::env::var_os("STATICZERO_BPF_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../target/bpfel-unknown-none/release/staticzero-defense")
+        });
+    let selected = select_probes(&[22], &[])?;
+    let report = defense::doctor::inspect(&object, &selected, device, &[]);
+    report.print(false)?;
+    ensure!(
+        report.passed(),
+        "privileged smoke preflight failed (this test does not skip failures)"
+    );
+    let mut bpf = aya::BpfLoader::new().load_file(object)?;
+    configure_modem_probe(&mut bpf, device, &[], defense::doctor::openat_layout()?.1)?;
+    let mut ring = RingBuf::try_from(bpf.take_map("DEFENSE_ALERTS").unwrap())?;
+    let attached = attach_probes(&mut bpf, &selected);
+    ensure!(
+        attached.reports[0].status == ProbeStatus::Active,
+        "attach failed: {:?}",
+        attached.reports[0]
+    );
+
+    openat(&fixture.directory.join("benign"))?;
+    ensure!(
+        collect(&mut ring, Duration::from_millis(250))
+            .await?
+            .is_empty(),
+        "benign path emitted an alert"
+    );
+    // O_NONBLOCK: a real modem port must never block the test; O_NOCTTY: the
+    // test must not steal the PTY as its controlling terminal.
+    openat_flags(device, libc::O_RDONLY | libc::O_NOCTTY | libc::O_NONBLOCK)?;
+    let alerts = collect(&mut ring, Duration::from_secs(1)).await?;
+    ensure!(
+        alerts.len() == 1,
+        "expected exactly one kernel alert from opening {}, got {}",
+        device.display(),
+        alerts.len()
+    );
+    ensure!(alerts[0].pid == std::process::id());
+    drop(ring);
+    drop(attached);
+    drop(bpf);
+    assert_pipeline(&fixture, alerts[0]).await
+}
+
+#[cfg(target_os = "linux")]
+fn openat_flags(path: &std::path::Path, flags: libc::c_int) -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes())?;
+    let fd = unsafe { libc::syscall(libc::SYS_openat, libc::AT_FDCWD, path.as_ptr(), flags, 0) };
+    ensure!(
+        fd >= 0,
+        "openat({}) failed: {}",
+        path.to_string_lossy(),
+        std::io::Error::last_os_error()
+    );
+    unsafe {
+        libc::close(fd as i32);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+#[ignore = "requires a built defense eBPF object, tracefs, and BPF/perf privileges in an isolated VM"]
+async fn privileged_modem_pty_smoke() -> Result<()> {
+    let pty = Pty::new()?;
+    ensure!(pty.slave().is_absolute(), "pty slave path must be absolute");
+    modem_device_smoke(pty.slave()).await
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+#[ignore = "opt-in: set STATICZERO_MODEM_DEVICE=/dev/ttyUSB0 (or /dev/cdc-wdm0) against real lab hardware"]
+async fn privileged_real_modem_smoke() -> Result<()> {
+    let device = std::env::var_os("STATICZERO_MODEM_DEVICE").context(
+        "STATICZERO_MODEM_DEVICE is not set; point it at a real modem device node \
+         (for example /dev/ttyUSB0 or /dev/cdc-wdm0) to run the real modem access smoke test",
+    )?;
+    let device = PathBuf::from(device);
+    ensure!(
+        device.is_absolute(),
+        "STATICZERO_MODEM_DEVICE must be absolute"
+    );
+    std::fs::metadata(&device)
+        .with_context(|| format!("configured modem device {} is missing", device.display()))?;
+    modem_device_smoke(&device).await
 }

@@ -33,6 +33,14 @@ Limitations:
 - Tracepoint entry reads a user pointer. Another thread could change the string;
   this is telemetry, not an enforcement boundary.
 
+## Per-CPU attachment
+
+The loader attaches tracepoints by opening one perf event per online CPU
+(`defense::perf`). aya's stock `TracePoint::attach` opens a single perf event
+pinned to CPU 0, which silently misses every event executing on any other CPU;
+this was observed as a CI flake where identical code and kernel delivered zero
+alerts depending on which CPU the test thread was scheduled on.
+
 ## Read-only preflight
 
 ```bash
@@ -122,3 +130,12 @@ network traffic generation, RF transmission, or offensive probe is used.
 CI runs the offline tests in the normal test job and the privileged test in
 the disposable Ubuntu VM used by the eBPF build job. Local offline success
 alone must never be described as live detector validation.
+
+## Lab-tier validation
+
+[LAB_SMOKE_TESTS.md](LAB_SMOKE_TESTS.md) extends validation beyond the passive
+tier: real modem device nodes (PTY and opt-in hardware via
+`STATICZERO_MODEM_DEVICE`), offensive probe attachment, and crafted GTP
+traffic through the kernel datapath. Those tests run through
+`scripts/defense_smoke.sh` and `scripts/offense_smoke.sh` in the same
+disposable-VM, elevate-only-the-test-binary model.

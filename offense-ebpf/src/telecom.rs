@@ -279,15 +279,16 @@ pub fn shadow_gtp_hijack(ctx: XdpContext) -> u32 {
 }
 
 fn try_gtp_hijack(ctx: &XdpContext) -> Result<u32, i64> {
+    // Every packet dereference must be preceded by an explicit bounds check
+    // against data_end, or the verifier rejects the program at load time.
     let data = ctx.data();
     let data_end = ctx.data_end();
-    let pkt_len = data_end - data;
 
-    if pkt_len < ETH_HDR_LEN + IP_HDR_LEN + UDP_HDR_LEN + 8 {
+    let ip_hdr = data + ETH_HDR_LEN;
+    if ip_hdr + IP_HDR_LEN > data_end {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    let ip_hdr = data + ETH_HDR_LEN;
     let protocol = unsafe { *((ip_hdr + 9) as *const u8) };
 
     // UDP = 17
@@ -296,6 +297,10 @@ fn try_gtp_hijack(ctx: &XdpContext) -> Result<u32, i64> {
     }
 
     let udp_hdr = ip_hdr + IP_HDR_LEN;
+    if udp_hdr + UDP_HDR_LEN > data_end {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
     let dst_port = unsafe { u16::from_be(*((udp_hdr + 2) as *const u16)) };
 
     if dst_port != GTP_PORT {

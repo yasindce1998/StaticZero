@@ -1591,6 +1591,7 @@ dependencies = [
  "aya-log",
  "bytes",
  "clap",
+ "libc",
  "staticzero-common",
  "tokio",
  "tracing",

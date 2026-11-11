@@ -303,9 +303,33 @@ pub fn configure_modem_probe(
     Ok(())
 }
 
+/// Loaded defense probes plus the perf event descriptors keeping them
+/// attached on every online CPU. Dropping detaches everything.
+#[derive(Debug)]
+pub struct AttachedProbes {
+    pub reports: Vec<ProbeReport>,
+    events: Vec<crate::perf::PerfEvents>,
+}
+
+impl AttachedProbes {
+    /// Number of per-CPU perf event descriptors currently held attached.
+    pub fn event_fd_count(&self) -> usize {
+        self.events.iter().map(|events| events.len()).sum()
+    }
+}
+
 /// A module is only active after both verifier loading and attachment succeed.
-pub fn attach_probes(bpf: &mut Bpf, selected: &[&ProbeSpec]) -> Vec<ProbeReport> {
-    selected
+///
+/// aya's `TracePoint::attach` opens its perf event on CPU 0 only, which makes
+/// the probe miss every event executing on other CPUs (observed as a CI flake:
+/// identical code and kernel, one runner passed, one delivered zero alerts).
+/// This loader instead opens one perf event per online CPU and pins the loaded
+/// program to each one, matching libbpf/BCC behavior.
+pub fn attach_probes(bpf: &mut Bpf, selected: &[&'static ProbeSpec]) -> AttachedProbes {
+    use std::os::fd::{AsFd, AsRawFd};
+
+    let mut events = Vec::new();
+    let reports = selected
         .iter()
         .map(|spec| {
             let Attachment::TracePoint { category, event } = spec.attachment else {
@@ -314,27 +338,33 @@ pub fn attach_probes(bpf: &mut Bpf, selected: &[&ProbeSpec]) -> Vec<ProbeReport>
                 };
                 return ProbeReport::new(spec, ProbeStatus::Unsupported, reason);
             };
-            let result = (|| -> Result<()> {
+            let result = (|| -> Result<crate::perf::PerfEvents> {
                 let program: &mut TracePoint = bpf
                     .program_mut(spec.program)
                     .context("program missing from eBPF object")?
                     .try_into()?;
                 program.load().context("verifier rejected program")?;
-                program
-                    .attach(category, event)
+                let prog_fd = program
+                    .fd()
+                    .context("retrieving loaded program fd")?
+                    .as_fd()
+                    .as_raw_fd();
+                let tp_id = crate::perf::tracepoint_id(category, event)?;
+                let events = crate::perf::attach_tracepoint_all_cpus(prog_fd, tp_id)
                     .context("tracepoint attachment failed")?;
-                Ok(())
+                Ok(events)
             })();
             match result {
-                Ok(()) => ProbeReport::new(
-                    spec,
-                    ProbeStatus::Active,
-                    format!("tracepoint {category}/{event}"),
-                ),
+                Ok(owned) => {
+                    let detail = format!("tracepoint {category}/{event} on {} cpu(s)", owned.len());
+                    events.push(owned);
+                    ProbeReport::new(spec, ProbeStatus::Active, detail)
+                }
                 Err(error) => ProbeReport::new(spec, ProbeStatus::Failed, format!("{error:#}")),
             }
         })
-        .collect()
+        .collect();
+    AttachedProbes { reports, events }
 }
 
 #[cfg(test)]

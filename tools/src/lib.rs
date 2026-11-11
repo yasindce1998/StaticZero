@@ -2,3 +2,4 @@
 //! firmware analysis, and cross-layer correlation.
 
 pub mod protocol_dissectors;
+pub mod rf_selftest;

@@ -33,6 +33,45 @@ Limitations:
 - Tracepoint entry reads a user pointer. Another thread could change the string;
   this is telemetry, not an enforcement boundary.
 
+## Per-CPU attachment
+
+Tracepoint and kprobe programs are attached with a single perf event per
+probe, which is the canonical model used by aya and libbpf: the program is
+pinned into the tracepoint's *shared* program array (`tp_event->prog_array`)
+and executes on every CPU where the tracepoint or kprobe fires, regardless of
+which CPU the perf event was opened on. Pinning the same program into
+additional per-CPU perf events is rejected by the kernel with `EEXIST`
+(`bpf_prog_array_copy` refuses duplicate programs), so per-CPU attachment of
+a single program is impossible by design and unnecessary.
+
+The zero-alert CI flake that prompted this investigation (run 42878645556:
+identical tree and kernel, one runner passed, one delivered no alerts) was
+**root-caused to a kernel bug**, not to this repository's code. Instrumented
+smoke tests proved that in the same process an `openat` of one path fired
+`sys_enter_openat` (BPF ran, filename captured) while an `openat` seconds
+later was dropped before the BPF program array executed at all.
+
+Kernels 7.0/7.7 copy syscall user-pointer arguments (like openat's
+`filename`) in `perf_syscall_enter` via `trace_user_fault_read()`, which
+uses a per-CPU scratch buffer with a preempt/migration retry guard. When the
+guard exhausts — a scheduler-dependent lottery with two documented failure
+modes (a migration-thread livelock, fixed by a stable-bound patch in March
+2026, and context-switch counter overcounting under load, reported at fleet
+scale on 7.1 and still under upstream discussion) — the entire syscall-enter
+event, including every attached BPF program, is dropped.
+
+Consequences:
+
+- **Production (Module 22):** on affected kernels, individual `openat`
+  events can be lost to this bug. Per-event detection probability is high
+  but not 100% under scheduler pressure; there is no userspace remedy. A
+  kernel carrying the upstream fixes does not have this limitation.
+- **Smoke tests:** the watched open uses a bounded, fully-logged retry
+  (each dropped attempt is printed with diagnostic counter state; five
+  consecutive losses are a hard failure), so the known kernel lottery does
+  not invalidate the test while a genuinely broken probe pipeline still
+  fails it.
+
 ## Read-only preflight
 
 ```bash
@@ -122,3 +161,12 @@ network traffic generation, RF transmission, or offensive probe is used.
 CI runs the offline tests in the normal test job and the privileged test in
 the disposable Ubuntu VM used by the eBPF build job. Local offline success
 alone must never be described as live detector validation.
+
+## Lab-tier validation
+
+[LAB_SMOKE_TESTS.md](LAB_SMOKE_TESTS.md) extends validation beyond the passive
+tier: real modem device nodes (PTY and opt-in hardware via
+`STATICZERO_MODEM_DEVICE`), offensive probe attachment, and crafted GTP
+traffic through the kernel datapath. Those tests run through
+`scripts/defense_smoke.sh` and `scripts/offense_smoke.sh` in the same
+disposable-VM, elevate-only-the-test-binary model.

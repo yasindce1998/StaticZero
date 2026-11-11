@@ -22,9 +22,25 @@ if [[ -z "$test_binary" || ! -x "$test_binary" ]]; then
     echo "Failed to locate the modem_smoke test executable." >&2
     exit 1
 fi
-echo "Running passive openat smoke test; no radio hardware, transmissions, or real modem access."
-if [[ "$EUID" -eq 0 ]]; then
-    exec env STATICZERO_BPF_PATH="$object" "$test_binary" --ignored --exact privileged_modem_openat_smoke --nocapture
+
+run_test() {
+    local name="$1"
+    echo "Running $name (no radio hardware or transmissions; real kernel tracepoint + ring buffer)."
+    if [[ "$EUID" -eq 0 ]]; then
+        env STATICZERO_BPF_PATH="$object" "$test_binary" --ignored --exact "$name" --nocapture
+    else
+        sudo env STATICZERO_BPF_PATH="$object" "$test_binary" --ignored --exact "$name" --nocapture
+    fi
+}
+
+run_test privileged_modem_openat_smoke
+run_test privileged_modem_pty_smoke
+
+# Opt-in real modem hardware path. The test itself fails if the variable is
+# set but the device is missing; unset means "not requested".
+if [[ -n "${STATICZERO_MODEM_DEVICE:-}" ]]; then
+    echo "STATICZERO_MODEM_DEVICE=$STATICZERO_MODEM_DEVICE set; running real modem access smoke test."
+    run_test privileged_real_modem_smoke
 else
-    exec sudo env STATICZERO_BPF_PATH="$object" "$test_binary" --ignored --exact privileged_modem_openat_smoke --nocapture
+    echo "STATICZERO_MODEM_DEVICE not set; skipping real modem hardware smoke test (opt-in)."
 fi

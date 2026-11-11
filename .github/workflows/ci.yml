@@ -84,6 +84,10 @@ jobs:
         timeout-minutes: 5
         run: bash scripts/defense_smoke.sh
 
+      - name: Offensive probe + traffic-path smoke test (disposable runner VM)
+        timeout-minutes: 5
+        run: bash scripts/offense_smoke.sh
+
   test:
     name: Tests
     runs-on: ubuntu-latest

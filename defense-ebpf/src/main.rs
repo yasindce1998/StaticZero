@@ -536,6 +536,87 @@ fn try_detect_modem_tamper(ctx: &TracePointContext) -> Result<u32, i64> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// DIAGNOSTIC (test-only, not in the probe registry): openat tracepoint liveness
+// probe. Counts sys_enter_openat invocations for one configured PID and
+// captures the filename-read result, letting smoke-test failures distinguish
+// "the tracepoint never fired for the process" from "the user-string read or
+// the path match failed". The daemon never loads this program.
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[map]
+static DIAG_PID: HashMap<u32, u32> = HashMap::with_max_entries(1, 0);
+
+#[map]
+static DIAG_COUNT: HashMap<u32, u64> = HashMap::with_max_entries(1, 0);
+
+/// Invocations by every *other* pid: shows whether the tracepoint delivers
+/// BPF for anyone else on this machine while our process is being dropped.
+#[map]
+static DIAG_OTHER_COUNT: HashMap<u32, u64> = HashMap::with_max_entries(1, 0);
+
+/// Invocations of sys_enter_close for this pid. close() takes no user-pointer
+/// arguments, so this tracepoint bypasses the syscall user-fault copy
+/// machinery entirely: if close events arrive while openat events do not, the
+/// user-fault copy path is what drops the openat events.
+#[map]
+static DIAG_CLOSE_COUNT: HashMap<u32, u64> = HashMap::with_max_entries(1, 0);
+
+/// bpf_probe_read_user_str return: string length on success, errno on failure,
+/// -1000 when the configured filename offset itself was invalid.
+#[map]
+static DIAG_READ_RC: HashMap<u32, i64> = HashMap::with_max_entries(1, 0);
+
+#[map]
+static DIAG_PATH: HashMap<u32, [u8; common::modem::MODEM_PATH_BYTES]> =
+    HashMap::with_max_entries(1, 0);
+
+#[tracepoint]
+pub fn diag_openat(ctx: TracePointContext) -> u32 {
+    try_diag_openat(&ctx).unwrap_or_default()
+}
+
+fn try_diag_openat(ctx: &TracePointContext) -> Result<u32, i64> {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let watched = unsafe { DIAG_PID.get(&0).copied() }.unwrap_or(0);
+    if watched == 0 || pid != watched {
+        let other = unsafe { DIAG_OTHER_COUNT.get(&0).copied() }.unwrap_or(0) + 1;
+        let _ = unsafe { DIAG_OTHER_COUNT.insert(&0, &other, 0) };
+        return Ok(0);
+    }
+    let count = unsafe { DIAG_COUNT.get(&0).copied() }.unwrap_or(0) + 1;
+    let _ = unsafe { DIAG_COUNT.insert(&0, &count, 0) };
+
+    let offset = *MODEM_FILENAME_OFFSET.get(0).ok_or(1i64)?;
+    if !(8..=256).contains(&offset) {
+        let rc: i64 = -1000;
+        let _ = unsafe { DIAG_READ_RC.insert(&0, &rc, 0) };
+        return Ok(0);
+    }
+    let filename: u64 = unsafe { ctx.read_at(offset as usize)? };
+    let mut requested = [0u8; common::modem::MODEM_PATH_BYTES];
+    let read = unsafe { bpf_probe_read_user_str_bytes(filename as *const u8, &mut requested) };
+    let rc: i64 = match read {
+        Ok(bytes) => bytes.len() as i64,
+        Err(code) => code,
+    };
+    let _ = unsafe { DIAG_READ_RC.insert(&0, &rc, 0) };
+    let _ = unsafe { DIAG_PATH.insert(&0, &requested, 0) };
+    Ok(0)
+}
+
+#[tracepoint]
+pub fn diag_close(_ctx: TracePointContext) -> u32 {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let watched = unsafe { DIAG_PID.get(&0).copied() }.unwrap_or(0);
+    if watched == 0 || pid != watched {
+        return 0;
+    }
+    let count = unsafe { DIAG_CLOSE_COUNT.get(&0).copied() }.unwrap_or(0) + 1;
+    let _ = unsafe { DIAG_CLOSE_COUNT.insert(&0, &count, 0) };
+    0
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MODULE 23: NAS Replay Detection (Alert 26)
 // Track NAS message sequence numbers per bearer to detect replay attacks.
 // Hook: kprobe on NAS decode path

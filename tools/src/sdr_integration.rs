@@ -1,6 +1,6 @@
 //! SDR (Software Defined Radio) bridge for real-time RF signal capture and injection.
 
-use anyhow::Result;
+use anyhow::{ensure, Result};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -51,7 +51,7 @@ struct Cli {
     #[arg(long, default_value = "7891")]
     defense_port: u16,
 
-    /// Operating mode: scan, capture, inject, relay
+    /// Operating mode: scan, capture, inject, relay, selftest-tx
     #[arg(long, default_value = "scan")]
     mode: String,
 
@@ -562,6 +562,30 @@ async fn main() -> Result<()> {
     info!("  Frequency: {} MHz", cli.frequency / 1_000_000);
     info!("  Sample rate: {} Msps", cli.sample_rate / 1_000_000);
     info!("  Mode: {}", cli.mode);
+
+    // RF TX self-test: exercises the transmission pipeline (and, when
+    // STATICZERO_SDR_TX=1 with the cabled HackRF→RTL-SDR loopback connected,
+    // real RF over a cable) and exits instead of serving the control API.
+    if cli.mode == "selftest-tx" {
+        let options = staticzero_tools::rf_selftest::SelfTestOptions {
+            frequency_hz: cli.frequency,
+            sample_rate_hz: cli.sample_rate,
+            tx_gain_db: cli.gain,
+            require_hardware: std::env::var_os("STATICZERO_SDR_TX")
+                .map(|v| v == "1")
+                .unwrap_or(false),
+            ..staticzero_tools::rf_selftest::SelfTestOptions::default()
+        };
+        let workdir = std::env::temp_dir().join(format!("sdr-selftest-{}", std::process::id()));
+        let report = staticzero_tools::rf_selftest::run_selftest(&workdir, &options)?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        ensure!(
+            report.passed,
+            "RF TX self-test failed; see the report above"
+        );
+        let _ = std::fs::remove_dir_all(&workdir);
+        return Ok(());
+    }
 
     let mode = match cli.mode.as_str() {
         "scan" => SdrMode::Scan,

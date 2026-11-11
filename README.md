@@ -15,8 +15,11 @@ eBPF-based telecom security research framework covering 2G through 5G and non-te
 > proof of working live interception/detection. Defense Module 22 has an
 > experimental passive `openat` adapter; Modules 16–21 and 23–55 currently lack
 > validated attachment adapters and are reported as unsupported by the loader.
-> SDR hardware methods also include scaffolding. See
-> [defense validation](docs/DEFENSE_VALIDATION.md) for limitations and smoke tests.
+> SDR hardware methods also include scaffolding. Lab-tier smoke tests cover
+> offensive kprobe attachment, XDP/TC traffic-path probes, real modem device
+> nodes, and the sdr-bridge TX pipeline — see
+> [lab smoke tests](docs/LAB_SMOKE_TESTS.md) and
+> [defense validation](docs/DEFENSE_VALIDATION.md) for scope and limitations.
 
 ## Architecture
 
@@ -334,6 +337,7 @@ Hardware-abstracted radio interface supporting HackRF, bladeRF, USRP, RTL-SDR, a
 - [docs/usecase.md](docs/usecase.md) — Use cases, how-to guides, full offense/defense reference
 - [docs/TELECOM_THREAT_MODEL.md](docs/TELECOM_THREAT_MODEL.md) — Attack trees, threat actors, MITRE mapping
 - [docs/LAB_SETUP.md](docs/LAB_SETUP.md) — Isolated lab environment configuration
+- [docs/LAB_SMOKE_TESTS.md](docs/LAB_SMOKE_TESTS.md) — Real-kernel/real-hardware smoke tests: offensive probes, traffic path, modem devices, RF TX
 - [docs/DEFENSE_VALIDATION.md](docs/DEFENSE_VALIDATION.md) — Runtime support, read-only preflight, passive smoke tests
 
 ## Requirements
@@ -366,7 +370,8 @@ cargo build --release
 # Run defense engine (only supported adapters attach; see validation guide)
 sudo ./target/release/staticzero-defense --all
 
-# Run offense loader (authorized testing only)
+# Run offense loader (authorized testing only). Missing kernel hook points
+# (e.g. sdr_rx_callback) disable that one feature instead of crashing.
 sudo ./target/release/staticzero-offense --enable-telecom --gtp-iface gtp0
 
 # Run with satellite modules
@@ -376,6 +381,12 @@ sudo ./target/release/staticzero-offense --enable-satellite --sat-iface sat0
 # Run with RF protocol domain modules (TETRA/P25, BLE, Zigbee, LoRaWAN, WiFi, RKE, UAV, paging, broadcast, O-RAN, AIS)
 sudo ./target/release/staticzero-defense --rf_defense
 sudo ./target/release/staticzero-offense --enable-rf --sdr-iface sdr0 --fronthaul-iface eth0
+
+# Lab-tier smoke tests: offensive probes, traffic path, real modem devices,
+# RF TX pipeline (see docs/LAB_SMOKE_TESTS.md)
+bash scripts/defense_smoke.sh
+bash scripts/offense_smoke.sh
+bash scripts/sdr_tx_smoke.sh
 ```
 
 ## License

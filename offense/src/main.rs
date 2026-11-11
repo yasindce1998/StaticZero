@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use aya::maps::RingBuf;
-use aya::programs::{KProbe, SchedClassifier, Xdp, XdpFlags};
+use aya::programs::{SchedClassifier, Xdp, XdpFlags};
 use aya::BpfLoader;
 use clap::Parser;
 use tokio::signal;
@@ -13,6 +13,7 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use common::EventHeader;
+use staticzero_offense::attach_kprobe;
 
 #[derive(Parser, Debug)]
 #[command(name = "staticzero-offense")]
@@ -113,6 +114,31 @@ async fn main() -> Result<()> {
         .load_file(&cli.bpf_path)
         .context("failed to load eBPF object")?;
 
+    // Attached kprobe symbol names (informational; the aya links live in the
+    // Bpf object and detach when it drops).
+    let mut attachments = Vec::new();
+
+    /// Attach a kprobe; a missing kernel symbol or a verifier rejection
+    /// disables that one feature, never the whole loader.
+    macro_rules! attach_kprobes {
+        ($probes:expr) => {
+            for (name, attach_point, desc) in &$probes {
+                match attach_kprobe(&mut bpf, name, attach_point) {
+                    Ok(()) => {
+                        info!(
+                            "{} enabled via {} (probe runs on all CPUs)",
+                            desc, attach_point
+                        );
+                        attachments.push(*attach_point);
+                    }
+                    Err(error) => {
+                        warn!("{} ({}) not attached, skipping: {:#}", desc, name, error)
+                    }
+                }
+            }
+        };
+    }
+
     let enable_telecom = cli.all || cli.enable_telecom;
     let enable_advanced = cli.all || cli.enable_telecom_advanced;
     let enable_5g = cli.all || cli.enable_5g_advanced;
@@ -156,17 +182,7 @@ async fn main() -> Result<()> {
             ),
         ];
 
-        for (name, attach_point, desc) in &kprobes {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(attach_point, 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} ({}) not found in eBPF object, skipping", desc, name),
-            }
-        }
+        attach_kprobes!(kprobes);
 
         // XDP on GTP interface for tunnel hijacking
         if let Some(prog) = bpf.program_mut("shadow_gtp_hijack") {
@@ -213,17 +229,7 @@ async fn main() -> Result<()> {
             ),
         ];
 
-        for (name, attach_point, desc) in &advanced_kprobes {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(attach_point, 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} ({}) not found, skipping", desc, name),
-            }
-        }
+        attach_kprobes!(advanced_kprobes);
 
         // XDP for WiFi calling exploitation
         if let Some(prog) = bpf.program_mut("shadow_wifi_calling_exploit") {
@@ -293,17 +299,7 @@ async fn main() -> Result<()> {
             ),
         ];
 
-        for (name, attach_point, desc) in &kprobes_5g {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(attach_point, 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} ({}) not found, skipping", desc, name),
-            }
-        }
+        attach_kprobes!(kprobes_5g);
 
         // XDP on SDR interface for jamming evasion
         if let Some(prog) = bpf.program_mut("shadow_jamming_evasion") {
@@ -368,17 +364,7 @@ async fn main() -> Result<()> {
             ),
         ];
 
-        for (name, attach_point, desc) in &sat_kprobes {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(attach_point, 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} ({}) not found, skipping", desc, name),
-            }
-        }
+        attach_kprobes!(sat_kprobes);
 
         // XDP on satellite interface for ISL fingerprinting and GNSS spoofing
         let sat_xdp_progs = [
@@ -529,17 +515,7 @@ async fn main() -> Result<()> {
             ),
         ];
 
-        for (name, attach_point, desc) in &rf_kprobes {
-            match bpf.program_mut(name) {
-                Some(prog) => {
-                    let kprobe: &mut KProbe = prog.try_into()?;
-                    kprobe.load()?;
-                    kprobe.attach(attach_point, 0)?;
-                    info!("{} enabled", desc);
-                }
-                None => warn!("{} ({}) not found, skipping", desc, name),
-            }
-        }
+        attach_kprobes!(rf_kprobes);
 
         // XDP programs for RF domains (SDR + fronthaul interfaces)
         let rf_xdp_progs = [
@@ -659,7 +635,10 @@ async fn main() -> Result<()> {
         }
     });
 
-    info!("StaticZero Offense Engine running. Press Ctrl+C to stop.");
+    info!(
+        "StaticZero Offense Engine running ({} attached probe group(s)). Press Ctrl+C to stop.",
+        attachments.len()
+    );
     signal::ctrl_c().await?;
     running.store(false, Ordering::SeqCst);
     info!("Shutting down.");

@@ -303,9 +303,23 @@ pub fn configure_modem_probe(
     Ok(())
 }
 
+/// Loaded defense probes. Dropping the value is a no-op beyond dropping the
+/// reports; the aya links live in the `Bpf` object and detach when it drops.
+#[derive(Debug)]
+pub struct AttachedProbes {
+    pub reports: Vec<ProbeReport>,
+}
+
 /// A module is only active after both verifier loading and attachment succeed.
-pub fn attach_probes(bpf: &mut Bpf, selected: &[&ProbeSpec]) -> Vec<ProbeReport> {
-    selected
+///
+/// One perf event per tracepoint is the canonical model (aya, libbpf): the
+/// program is pinned into the tracepoint's *shared* program array and then
+/// executes on every CPU where the tracepoint fires, regardless of which CPU
+/// the perf event itself was opened on. The kernel rejects pinning the same
+/// program into additional per-CPU perf events with EEXIST, so per-CPU
+/// attachment of a single program is impossible by design.
+pub fn attach_probes(bpf: &mut Bpf, selected: &[&'static ProbeSpec]) -> AttachedProbes {
+    let reports = selected
         .iter()
         .map(|spec| {
             let Attachment::TracePoint { category, event } = spec.attachment else {
@@ -329,12 +343,16 @@ pub fn attach_probes(bpf: &mut Bpf, selected: &[&ProbeSpec]) -> Vec<ProbeReport>
                 Ok(()) => ProbeReport::new(
                     spec,
                     ProbeStatus::Active,
-                    format!("tracepoint {category}/{event}"),
+                    format!(
+                        "tracepoint {category}/{event} (probe runs on all CPUs \
+                         via the tracepoint program array)"
+                    ),
                 ),
                 Err(error) => ProbeReport::new(spec, ProbeStatus::Failed, format!("{error:#}")),
             }
         })
-        .collect()
+        .collect();
+    AttachedProbes { reports }
 }
 
 #[cfg(test)]

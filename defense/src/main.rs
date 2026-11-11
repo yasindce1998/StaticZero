@@ -219,15 +219,16 @@ async fn main() -> Result<()> {
         &cli.allow_modem_pid,
         filename_offset,
     )?;
-    let reports = attach_probes(&mut bpf, &selected);
-    for report in &reports {
+    let attached = attach_probes(&mut bpf, &selected);
+    for report in &attached.reports {
         match report.status {
             ProbeStatus::Active => info!(module = report.module, "active: {}", report.detail),
             _ => warn!(module = report.module, status = ?report.status, "{}", report.detail),
         }
     }
     ensure!(
-        reports
+        attached
+            .reports
             .iter()
             .any(|report| report.status == ProbeStatus::Active),
         "no defense modules attached"

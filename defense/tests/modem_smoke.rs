@@ -193,6 +193,77 @@ async fn shared_pipeline_preserves_correlated_threat_delivery() -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
+/// Attach the diagnostic liveness probe alongside the modem probe so that a
+/// failed assertion can distinguish "tracepoint never fired" from "filename
+/// read or path match failed". The diagnostic writes no alerts.
+fn configure_diagnostics(bpf: &mut aya::Bpf, pid: u32) -> Result<()> {
+    use aya::maps::HashMap;
+    use aya::programs::TracePoint;
+    HashMap::<_, u32, u32>::try_from(
+        bpf.map_mut("DIAG_PID")
+            .context("DIAG_PID map missing from eBPF object")?,
+    )?
+    .insert(0, pid, 0)?;
+    let diag: &mut TracePoint = bpf
+        .program_mut("diag_openat")
+        .context("diag_openat missing from eBPF object")?
+        .try_into()?;
+    diag.load().context("verifier rejected diag_openat")?;
+    diag.attach("syscalls", "sys_enter_openat")
+        .context("attaching diag_openat")?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+/// Human-readable state of the diagnostic maps and the tracepoint, for
+/// inclusion in test failure messages.
+fn diagnostics(bpf: &aya::Bpf) -> String {
+    use aya::maps::HashMap;
+    let count: Option<u64> = bpf
+        .map("DIAG_COUNT")
+        .and_then(|map| HashMap::<_, u32, u64>::try_from(map).ok())
+        .and_then(|map| map.get(&0, 0).ok());
+    let read_rc: Option<i64> = bpf
+        .map("DIAG_READ_RC")
+        .and_then(|map| HashMap::<_, u32, i64>::try_from(map).ok())
+        .and_then(|map| map.get(&0, 0).ok());
+    let path: Option<[u8; common::modem::MODEM_PATH_BYTES]> = bpf
+        .map("DIAG_PATH")
+        .and_then(|map| {
+            HashMap::<_, u32, [u8; common::modem::MODEM_PATH_BYTES]>::try_from(map).ok()
+        })
+        .and_then(|map| map.get(&0, 0).ok());
+
+    let mut out = match count {
+        Some(count) => format!("diag_openat invocations for this pid: {count}"),
+        None => "diag_openat state unreadable".to_string(),
+    };
+    match read_rc {
+        Some(rc) => {
+            out.push_str(&format!(", last filename read rc: {rc}"));
+            if let Some(path) = path {
+                let end = path
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(path.len())
+                    .min(48);
+                out.push_str(&format!(
+                    ", last requested path: {:?}",
+                    String::from_utf8_lossy(&path[..end])
+                ));
+            }
+        }
+        None => out.push_str(", no filename read attempted"),
+    }
+    if let Ok(id) =
+        std::fs::read_to_string("/sys/kernel/tracing/events/syscalls/sys_enter_openat/id")
+    {
+        out.push_str(&format!("; tracepoint id {}", id.trim_matches('\n')));
+    }
+    out
+}
+
+#[cfg(target_os = "linux")]
 fn openat(path: &std::path::Path) -> Result<()> {
     use std::os::unix::ffi::OsStrExt;
     let path = std::ffi::CString::new(path.as_os_str().as_bytes())?;
@@ -269,21 +340,25 @@ async fn privileged_modem_openat_smoke() -> Result<()> {
         "attach failed: {:?}",
         attached.reports[0]
     );
+    configure_diagnostics(&mut bpf, std::process::id())?;
 
     openat(&fixture.directory.join("benign"))?;
     ensure!(
         collect(&mut ring, Duration::from_millis(250))
             .await?
             .is_empty(),
-        "benign path emitted an alert"
+        "benign path emitted an alert ({})",
+        diagnostics(&bpf)
     );
     openat(&fixture.watched())?;
     let alerts = collect(&mut ring, Duration::from_secs(1)).await?;
-    ensure!(
-        alerts.len() == 1,
-        "expected exactly one kernel alert, got {}",
-        alerts.len()
-    );
+    if alerts.len() != 1 {
+        anyhow::bail!(
+            "expected exactly one kernel alert, got {} ({})",
+            alerts.len(),
+            diagnostics(&bpf)
+        );
+    }
     ensure!(alerts[0].timestamp_ns > 0);
     HashMap::<_, u32, u8>::try_from(bpf.map_mut("MODEM_ACCESS_PIDS").unwrap())?.insert(
         std::process::id(),
@@ -295,10 +370,11 @@ async fn privileged_modem_openat_smoke() -> Result<()> {
         collect(&mut ring, Duration::from_millis(250))
             .await?
             .is_empty(),
-        "allowlisted PID emitted an alert"
+        "allowlisted PID emitted an alert ({})",
+        diagnostics(&bpf)
     );
     drop(ring);
-    drop(attached); // Detaches per-CPU perf events before unloading programs.
+    drop(attached);
     drop(bpf); // Detaches before fixture/database cleanup.
     assert_pipeline(&fixture, alerts[0]).await
 }
@@ -378,24 +454,28 @@ async fn modem_device_smoke(device: &std::path::Path) -> Result<()> {
         "attach failed: {:?}",
         attached.reports[0]
     );
+    configure_diagnostics(&mut bpf, std::process::id())?;
 
     openat(&fixture.directory.join("benign"))?;
     ensure!(
         collect(&mut ring, Duration::from_millis(250))
             .await?
             .is_empty(),
-        "benign path emitted an alert"
+        "benign path emitted an alert ({})",
+        diagnostics(&bpf)
     );
     // O_NONBLOCK: a real modem port must never block the test; O_NOCTTY: the
     // test must not steal the PTY as its controlling terminal.
     openat_flags(device, libc::O_RDONLY | libc::O_NOCTTY | libc::O_NONBLOCK)?;
     let alerts = collect(&mut ring, Duration::from_secs(1)).await?;
-    ensure!(
-        alerts.len() == 1,
-        "expected exactly one kernel alert from opening {}, got {}",
-        device.display(),
-        alerts.len()
-    );
+    if alerts.len() != 1 {
+        anyhow::bail!(
+            "expected exactly one kernel alert from opening {}, got {} ({})",
+            device.display(),
+            alerts.len(),
+            diagnostics(&bpf)
+        );
+    }
     ensure!(alerts[0].pid == std::process::id());
     drop(ring);
     drop(attached);

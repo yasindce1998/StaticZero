@@ -84,8 +84,21 @@ async fn privileged_offense_kprobe_smoke() -> Result<()> {
     let mut bpf = aya::BpfLoader::new().load_file(object_path())?;
     let mut ring = RingBuf::try_from(bpf.take_map("EVENTS").context("EVENTS map missing")?)?;
 
+    // Negative control first: a documented hook point that is not a mainline
+    // kernel symbol must fail to attach rather than silently succeed.
+    let missing = attach_kprobe(&mut bpf, "shadow_at_cmd_inject", "sdr_rx_callback");
+    ensure!(
+        missing.is_err(),
+        "attach to nonexistent symbol sdr_rx_callback unexpectedly succeeded"
+    );
+
+    attach_kprobe(&mut bpf, "shadow_rrc_redirect", "fd_install")
+        .context("attaching shadow_rrc_redirect to fd_install")?;
+
     // Predict which fd the next open() will install: occupy it, release it,
-    // and the kernel hands the same number to the next allocation.
+    // and the kernel hands the same number to the next allocation. This must
+    // happen AFTER every attach: each attach consumes descriptors (program
+    // loads and the perf event), which would shift the prediction.
     let probe_file = dir.join("fd-probe");
     std::fs::write(&probe_file, b"fd probe")?;
     let taken = std::fs::File::open(&probe_file)?;
@@ -97,17 +110,6 @@ async fn privileged_offense_kprobe_smoke() -> Result<()> {
             .context("DOWNGRADE_TARGETS map missing")?,
     )?
     .insert(predicted_fd, 1, 0)?;
-
-    // Negative control first: a documented hook point that is not a mainline
-    // kernel symbol must fail to attach rather than silently succeed.
-    let missing = attach_kprobe(&mut bpf, "shadow_at_cmd_inject", "sdr_rx_callback");
-    ensure!(
-        missing.is_err(),
-        "attach to nonexistent symbol sdr_rx_callback unexpectedly succeeded"
-    );
-
-    attach_kprobe(&mut bpf, "shadow_rrc_redirect", "fd_install")
-        .context("attaching shadow_rrc_redirect to fd_install")?;
 
     // Trigger: any open() installs the predicted fd via fd_install.
     let trigger = std::fs::File::create(dir.join("trigger"))?;

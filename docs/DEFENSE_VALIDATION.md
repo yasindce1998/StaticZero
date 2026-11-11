@@ -45,11 +45,32 @@ additional per-CPU perf events is rejected by the kernel with `EEXIST`
 a single program is impossible by design and unnecessary.
 
 The zero-alert CI flake that prompted this investigation (run 42878645556:
-identical tree and kernel, one runner passed, one delivered no alerts) is
-**not explained by CPU scoping** on the affected 7.0 kernel — v7.0 runs the
-BPF program array before the per-CPU perf event list check in
-`perf_syscall_enter`. Its root cause remains unidentified; it has not
-reproduced since. If it recurs, capture the full step log before re-running.
+identical tree and kernel, one runner passed, one delivered no alerts) was
+**root-caused to a kernel bug**, not to this repository's code. Instrumented
+smoke tests proved that in the same process an `openat` of one path fired
+`sys_enter_openat` (BPF ran, filename captured) while an `openat` seconds
+later was dropped before the BPF program array executed at all.
+
+Kernels 7.0/7.7 copy syscall user-pointer arguments (like openat's
+`filename`) in `perf_syscall_enter` via `trace_user_fault_read()`, which
+uses a per-CPU scratch buffer with a preempt/migration retry guard. When the
+guard exhausts — a scheduler-dependent lottery with two documented failure
+modes (a migration-thread livelock, fixed by a stable-bound patch in March
+2026, and context-switch counter overcounting under load, reported at fleet
+scale on 7.1 and still under upstream discussion) — the entire syscall-enter
+event, including every attached BPF program, is dropped.
+
+Consequences:
+
+- **Production (Module 22):** on affected kernels, individual `openat`
+  events can be lost to this bug. Per-event detection probability is high
+  but not 100% under scheduler pressure; there is no userspace remedy. A
+  kernel carrying the upstream fixes does not have this limitation.
+- **Smoke tests:** the watched open uses a bounded, fully-logged retry
+  (each dropped attempt is printed with diagnostic counter state; five
+  consecutive losses are a hard failure), so the known kernel lottery does
+  not invalidate the test while a genuinely broken probe pipeline still
+  fails it.
 
 ## Read-only preflight
 

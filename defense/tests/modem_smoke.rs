@@ -456,7 +456,21 @@ async fn modem_device_smoke(device: &std::path::Path) -> Result<()> {
     );
     configure_diagnostics(&mut bpf, std::process::id())?;
 
+    let diag_count = |bpf: &aya::Bpf| -> Option<u64> {
+        let map = bpf.map("DIAG_COUNT")?;
+        let map = aya::maps::HashMap::<_, u32, u64>::try_from(map).ok()?;
+        map.get(&0, 0).ok()
+    };
+
+    // Three opens with the diagnostic counter and CPU read after each: a
+    // regular file, an ordinary character device (/dev/null, same flag set as
+    // the device under test), and the device itself. On failure the counts
+    // bisect between "tracepoint machinery died after the first open" and
+    // "the device open specifically skipped the syscall-enter BPF run"; the
+    // CPU numbers expose per-CPU breakage in the kernel's syscall-enter
+    // handling (the failure has behaved like a scheduler lottery).
     openat(&fixture.directory.join("benign"))?;
+    let after_benign = (diag_count(&bpf), unsafe { libc::sched_getcpu() });
     ensure!(
         collect(&mut ring, Duration::from_millis(250))
             .await?
@@ -466,13 +480,33 @@ async fn modem_device_smoke(device: &std::path::Path) -> Result<()> {
     );
     // O_NONBLOCK: a real modem port must never block the test; O_NOCTTY: the
     // test must not steal the PTY as its controlling terminal.
-    openat_flags(device, libc::O_RDONLY | libc::O_NOCTTY | libc::O_NONBLOCK)?;
+    let device_flags = libc::O_RDONLY | libc::O_NOCTTY | libc::O_NONBLOCK;
+    openat_flags(std::path::Path::new("/dev/null"), device_flags)?;
+    let after_null = (diag_count(&bpf), unsafe { libc::sched_getcpu() });
+    ensure!(
+        collect(&mut ring, Duration::from_millis(250))
+            .await?
+            .is_empty(),
+        "/dev/null control emitted an alert ({})",
+        diagnostics(&bpf)
+    );
+    openat_flags(device, device_flags)?;
+    let after_device = (diag_count(&bpf), unsafe { libc::sched_getcpu() });
     let alerts = collect(&mut ring, Duration::from_secs(1)).await?;
+    // Machinery recheck: a regular-file open must still fire after the device
+    // open; if it does not, the tracepoint died at (or before) the device open.
+    openat(&fixture.directory.join("benign"))?;
+    let after_recheck = (diag_count(&bpf), unsafe { libc::sched_getcpu() });
     if alerts.len() != 1 {
         anyhow::bail!(
-            "expected exactly one kernel alert from opening {}, got {} ({})",
+            "expected exactly one kernel alert from opening {}, got {} \
+             (diag counts/cpu: benign={:?}, /dev/null={:?}, device={:?}, recheck={:?}; {})",
             device.display(),
             alerts.len(),
+            after_benign,
+            after_null,
+            after_device,
+            after_recheck,
             diagnostics(&bpf)
         );
     }

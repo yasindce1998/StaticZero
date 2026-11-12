@@ -12,9 +12,47 @@ jobs:
     name: CI Gate
     uses: ./.github/workflows/ci.yml
 
+  build-ebpf:
+    name: Build eBPF objects
+    needs: ci
+    # Pinned: the LLVM 23 apt repo below targets Ubuntu 24.04 (noble).
+    # ubuntu-latest now resolves to 26.04 where those packages conflict.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # bpf-linker 0.13 builds against LLVM 23 (llvm-sys 231); Ubuntu stock
+      # repos only carry older LLVM, so pull 23 from the official apt repo.
+      - name: Install LLVM 23 (bpf-linker dependency)
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-23 main" | sudo tee /etc/apt/sources.list.d/llvm-23.list
+          sudo apt-get update
+          sudo apt-get install -y llvm-23-dev libpolly-23-dev clang-23
+          echo "/usr/lib/llvm-23/bin" >> "$GITHUB_PATH"
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - name: Install bpf-linker
+        env:
+          LLVM_PREFIX: /usr/lib/llvm-23
+        run: cargo install bpf-linker --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-ebpf
+      - name: Build eBPF programs (offense + defense)
+        run: cargo xtask build-ebpf --release
+      - name: Upload eBPF objects
+        uses: actions/upload-artifact@v4
+        with:
+          name: ebpf-objects
+          path: |
+            target/bpfel-unknown-none/release/staticzero-offense
+            target/bpfel-unknown-none/release/staticzero-defense
+          retention-days: 1
+
   build:
     name: Build (${{ matrix.arch }})
-    needs: ci
+    needs: [ci, build-ebpf]
     strategy:
       matrix:
         include:
@@ -41,18 +79,28 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
+      - name: Download eBPF objects
+        uses: actions/download-artifact@v4
+        with:
+          name: ebpf-objects
+          path: target/bpfel-unknown-none/release
+
       - name: Build binaries
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: |
-          cargo build --release --target ${{ matrix.target }} -p staticzero-offense
-          cargo build --release --target ${{ matrix.target }} -p staticzero-defense
+          cargo build --release --target ${{ matrix.target }} -p staticzero-offense --features ebpf-bin
+          cargo build --release --target ${{ matrix.target }} -p staticzero-defense --features ebpf-bin
+          cargo build --release --target ${{ matrix.target }} -p staticzero-tools
 
       - name: Package
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/staticzero-offense dist/staticzero-offense-linux-${{ matrix.arch }}
           cp target/${{ matrix.target }}/release/staticzero-defense dist/staticzero-defense-linux-${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/modem-firmware dist/modem-firmware-linux-${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/sdr-bridge dist/sdr-bridge-linux-${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/protocol-correlator dist/protocol-correlator-linux-${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:

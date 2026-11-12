@@ -26,17 +26,23 @@ use defense::security::{harden_process, validate_environment, SecurityConfig};
 use defense::server::{build_router, AppState};
 use defense::TelecomCorrelationMetrics;
 
+// The compiled eBPF object is embedded so release binaries are
+// self-contained. `cargo xtask build-ebpf` must run before building this
+// binary (enforced by the ebpf-bin feature requirement).
+#[cfg(debug_assertions)]
+const EMBEDDED_BPF: &[u8] =
+    include_bytes!("../../target/bpfel-unknown-none/debug/staticzero-defense");
+#[cfg(not(debug_assertions))]
+const EMBEDDED_BPF: &[u8] =
+    include_bytes!("../../target/bpfel-unknown-none/release/staticzero-defense");
+
 #[derive(Parser, Debug)]
 #[command(name = "staticzero-defense")]
 #[command(about = "StaticZero Telecom Network Defense Engine")]
 struct Cli {
-    /// Path to compiled eBPF object file
-    #[arg(
-        short,
-        long,
-        default_value = "target/bpfel-unknown-none/release/staticzero-defense"
-    )]
-    bpf_path: PathBuf,
+    /// Path to an external eBPF object file; overrides the embedded object
+    #[arg(short, long)]
+    bpf_path: Option<PathBuf>,
 
     /// Configuration file path
     #[arg(short, long, default_value = "/etc/staticzero/config.toml")]
@@ -118,8 +124,21 @@ async fn main() -> Result<()> {
         }
     }
     let selected = select_probes(&cli.modules, &groups)?;
+    // Resolve the eBPF object bytes: an explicit --bpf-path overrides the
+    // object embedded at build time.
+    let (bpf_bytes, bpf_source) = match &cli.bpf_path {
+        Some(path) => (
+            std::fs::read(path).with_context(|| format!("read eBPF object {}", path.display()))?,
+            path.display().to_string(),
+        ),
+        None => (
+            EMBEDDED_BPF.to_vec(),
+            format!("embedded object ({} bytes)", EMBEDDED_BPF.len()),
+        ),
+    };
     let preflight = defense::doctor::inspect(
-        &cli.bpf_path,
+        &bpf_bytes,
+        &bpf_source,
         &selected,
         &cli.modem_path,
         &cli.allow_modem_pid,
@@ -206,10 +225,10 @@ async fn main() -> Result<()> {
 
     // ── eBPF loading ────────────────────────────────────────────────────────
     info!("StaticZero Telecom Defense Engine starting");
-    info!("Loading eBPF programs from {:?}", cli.bpf_path);
+    info!("Loading eBPF programs from {}", bpf_source);
 
     let mut bpf = BpfLoader::new()
-        .load_file(&cli.bpf_path)
+        .load(&bpf_bytes)
         .context("failed to load eBPF object")?;
 
     let (_, filename_offset) = defense::doctor::openat_layout()?;

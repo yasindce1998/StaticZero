@@ -1,9 +1,23 @@
 [package]
 name = "staticzero-offense"
-version = "0.4.0"
+version = "0.5.0"
 license = "MIT"
 edition = "2021"
 description = "User-space loader for StaticZero telecom exploitation eBPF programs"
+
+[[bin]]
+name = "staticzero-offense"
+path = "src/main.rs"
+# Building the binary requires the compiled eBPF object produced by
+# `cargo xtask build-ebpf` (embedded via include_bytes!). Plain
+# `cargo build -p staticzero-offense` is a no-op for this crate.
+required-features = ["ebpf-bin"]
+
+[features]
+default = []
+# Embed the eBPF object into the binary so release artifacts are
+# self-contained (no external target/bpfel-unknown-none/... path needed).
+ebpf-bin = []
 
 [dependencies]
 common = { package = "staticzero-common", path = "../common", features = ["user"] }

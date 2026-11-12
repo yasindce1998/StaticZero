@@ -156,7 +156,8 @@ pub fn openat_layout() -> Result<(PathBuf, u32)> {
 }
 
 pub fn inspect(
-    bpf_path: &Path,
+    bpf_bytes: &[u8],
+    bpf_source: &str,
     selected: &[&ProbeSpec],
     modem_path: &Path,
     allowed_pids: &[u32],
@@ -221,19 +222,12 @@ pub fn inspect(
             ),
         });
     }
-    let object = fs::read(bpf_path)
-        .with_context(|| {
-            format!(
-                "read {}; build with cargo xtask build-ebpf --release",
-                bpf_path.display()
-            )
-        })
-        .and_then(|bytes| Object::parse(&bytes).context("parse eBPF ELF object"));
+    let object = Object::parse(bpf_bytes).context("parse eBPF ELF object");
     checks.push(check(
         "ebpf_object",
         object
             .as_ref()
-            .map(|_| bpf_path.display().to_string())
+            .map(|_| bpf_source.to_string())
             .map_err(|e| anyhow::anyhow!("{e:#}")),
     ));
     let modules = selected.iter().map(|spec| {

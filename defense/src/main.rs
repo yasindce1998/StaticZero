@@ -125,14 +125,15 @@ async fn main() -> Result<()> {
     }
     let selected = select_probes(&cli.modules, &groups)?;
     // Resolve the eBPF object bytes: an explicit --bpf-path overrides the
-    // object embedded at build time.
-    let (bpf_bytes, bpf_source) = match &cli.bpf_path {
+    // object embedded at build time. A read failure is reported by the
+    // doctor preflight rather than aborting, so --doctor stays diagnostic.
+    let (bpf_bytes, bpf_source): (anyhow::Result<Vec<u8>>, String) = match &cli.bpf_path {
         Some(path) => (
-            std::fs::read(path).with_context(|| format!("read eBPF object {}", path.display()))?,
+            std::fs::read(path).with_context(|| format!("read eBPF object {}", path.display())),
             path.display().to_string(),
         ),
         None => (
-            EMBEDDED_BPF.to_vec(),
+            Ok(EMBEDDED_BPF.to_vec()),
             format!("embedded object ({} bytes)", EMBEDDED_BPF.len()),
         ),
     };
@@ -227,6 +228,8 @@ async fn main() -> Result<()> {
     info!("StaticZero Telecom Defense Engine starting");
     info!("Loading eBPF programs from {}", bpf_source);
 
+    let bpf_bytes =
+        bpf_bytes.context("eBPF object unavailable; the preflight should have reported it")?;
     let mut bpf = BpfLoader::new()
         .load(&bpf_bytes)
         .context("failed to load eBPF object")?;

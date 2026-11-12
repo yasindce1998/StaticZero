@@ -156,7 +156,7 @@ pub fn openat_layout() -> Result<(PathBuf, u32)> {
 }
 
 pub fn inspect(
-    bpf_bytes: &[u8],
+    bpf_bytes: &anyhow::Result<Vec<u8>>,
     bpf_source: &str,
     selected: &[&ProbeSpec],
     modem_path: &Path,
@@ -222,7 +222,10 @@ pub fn inspect(
             ),
         });
     }
-    let object = Object::parse(bpf_bytes).context("parse eBPF ELF object");
+    let object = bpf_bytes
+        .as_ref()
+        .map_err(|e| anyhow::anyhow!("{e:#}"))
+        .and_then(|bytes| Object::parse(bytes).context("parse eBPF ELF object"));
     checks.push(check(
         "ebpf_object",
         object

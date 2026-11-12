@@ -1,3 +1,8 @@
+// These tests invoke the compiled staticzero-defense binary, which requires
+// the ebpf-bin feature (and the eBPF objects built by cargo xtask). CI runs
+// them in the eBPF job: cargo test --release --features ebpf-bin --test doctor_cli
+#![cfg(feature = "ebpf-bin")]
+
 use std::process::Command;
 
 #[test]

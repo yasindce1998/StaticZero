@@ -361,8 +361,12 @@ See [docs/LAB_SETUP.md](docs/LAB_SETUP.md) for isolated test environment configu
 # Build eBPF programs
 cargo xtask build-ebpf --release
 
-# Build user-space
+# Build user-space. The defense/offense binaries embed the eBPF objects
+# (self-contained releases); plain `cargo build` builds libraries and the
+# tools crate only.
 cargo build --release
+cargo build --release -p staticzero-defense --features ebpf-bin
+cargo build --release -p staticzero-offense --features ebpf-bin
 
 # Inspect supported/unsupported modules without loading or attaching BPF
 ./target/release/staticzero-defense --doctor --all

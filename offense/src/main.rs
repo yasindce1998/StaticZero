@@ -15,17 +15,23 @@ use tracing_subscriber::EnvFilter;
 use common::EventHeader;
 use staticzero_offense::attach_kprobe;
 
+// The compiled eBPF object is embedded so release binaries are
+// self-contained. `cargo xtask build-ebpf` must run before building this
+// binary (enforced by the ebpf-bin feature requirement).
+#[cfg(debug_assertions)]
+const EMBEDDED_BPF: &[u8] =
+    include_bytes!("../../target/bpfel-unknown-none/debug/staticzero-offense");
+#[cfg(not(debug_assertions))]
+const EMBEDDED_BPF: &[u8] =
+    include_bytes!("../../target/bpfel-unknown-none/release/staticzero-offense");
+
 #[derive(Parser, Debug)]
 #[command(name = "staticzero-offense")]
 #[command(about = "StaticZero Telecom Exploitation Research Loader")]
 struct Cli {
-    /// Path to compiled eBPF object file
-    #[arg(
-        short,
-        long,
-        default_value = "target/bpfel-unknown-none/release/staticzero-offense"
-    )]
-    bpf_path: PathBuf,
+    /// Path to an external eBPF object file; overrides the embedded object
+    #[arg(short, long)]
+    bpf_path: Option<PathBuf>,
 
     /// Enable telecom interception (F89-F100: AT cmd, baseband, SIM, IMSI, downgrade, GTP, SS7, Diameter, RRC, NAS, SUPI, N2)
     #[arg(long)]
@@ -108,10 +114,22 @@ async fn main() -> Result<()> {
     });
 
     info!("StaticZero Telecom Offense Loader starting");
-    info!("Loading eBPF programs from {:?}", cli.bpf_path);
+
+    // An explicit --bpf-path overrides the object embedded at build time.
+    let (bpf_bytes, bpf_source) = match &cli.bpf_path {
+        Some(path) => (
+            std::fs::read(path).with_context(|| format!("read eBPF object {}", path.display()))?,
+            path.display().to_string(),
+        ),
+        None => (
+            EMBEDDED_BPF.to_vec(),
+            format!("embedded object ({} bytes)", EMBEDDED_BPF.len()),
+        ),
+    };
+    info!("Loading eBPF programs from {}", bpf_source);
 
     let mut bpf = BpfLoader::new()
-        .load_file(&cli.bpf_path)
+        .load(&bpf_bytes)
         .context("failed to load eBPF object")?;
 
     // Attached kprobe symbol names (informational; the aya links live in the

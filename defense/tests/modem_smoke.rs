@@ -351,7 +351,14 @@ async fn privileged_modem_openat_smoke() -> Result<()> {
                 .join("../target/bpfel-unknown-none/release/staticzero-defense")
         });
     let selected = select_probes(&[22], &[])?;
-    let report = defense::doctor::inspect(&object, &selected, &fixture.watched(), &[]);
+    let bpf_bytes: anyhow::Result<Vec<u8>> = Ok(std::fs::read(&object)?);
+    let report = defense::doctor::inspect(
+        &bpf_bytes,
+        &object.display().to_string(),
+        &selected,
+        &fixture.watched(),
+        &[],
+    );
     report.print(false)?;
     ensure!(
         report.passed(),
@@ -582,7 +589,14 @@ async fn modem_device_smoke(device: &std::path::Path) -> Result<()> {
                 .join("../target/bpfel-unknown-none/release/staticzero-defense")
         });
     let selected = select_probes(&[22], &[])?;
-    let report = defense::doctor::inspect(&object, &selected, device, &[]);
+    let bpf_bytes: anyhow::Result<Vec<u8>> = Ok(std::fs::read(&object)?);
+    let report = defense::doctor::inspect(
+        &bpf_bytes,
+        &object.display().to_string(),
+        &selected,
+        device,
+        &[],
+    );
     report.print(false)?;
     ensure!(
         report.passed(),

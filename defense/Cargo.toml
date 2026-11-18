@@ -29,7 +29,6 @@ aya = { version = "~0.12", features = ["async_tokio"] }
 aya-log = "~0.2"
 aya-obj = "0.1"
 bytes = "1"
-chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 prometheus = "0.14"
 rusqlite = { version = "0.41", features = ["bundled"] }

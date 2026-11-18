@@ -66,6 +66,13 @@ For getting started with StaticZero telecom features:
 - 1x dAISy HAT (AIS receive)
 - Marine VHF + sub-GHz antennas
 - Pixhawk 4 Mini + SiK radios (MAVLink testing)
+- 1x Wi-Fi 7 AP + MLO-capable client NIC (F173-F174 MLO testing)
+- 1x u-blox NEO-F9P Galileo-capable receiver + GNSS antenna (F182-F183 OSNMA via osnma-verify)
+- 1x Qorvo DW3000 UWB dev board (F185-F186)
+- 1x BT 6.0 channel-sounding devkit (F187)
+- 1x ESP32 + Thread RCP + Matter test commissioner (F189-F190)
+- 1x DECT-2020 NR dev board (F192)
+- 1x NTN-capable test UE in RF shield box (F180-F181, F184 d2c-monitor)
 
 ### SDR-to-Feature Mapping
 
@@ -92,6 +99,18 @@ For getting started with StaticZero telecom features:
 | EAS (F165-F166) | HackRF | 162.4-162.55 MHz (NOAA/EAS) |
 | O-RAN Fronthaul (F167-F170) | Network tap (not SDR) | Ethernet-based eCPRI |
 | AIS (F171-F172) | RTL-SDR / ADALM-PLUTO | 161.975/162.025 MHz |
+| Wi-Fi 7 MLO (F173-F174) | Wi-Fi 7 AP + monitor-mode NIC | mlo-analyzer on captured frames |
+| 6 GHz AFC (F175) | Wi-Fi 6E/7 monitor NIC | standard-power AP impersonation |
+| 802.11bf sensing (F177) | sensing-capable Wi-Fi NIC | WLAN sensing privacy |
+| Wi-Fi HaLow (F178) | 802.11ah dev board (sub-GHz) | long-range Wi-Fi |
+| D2C / NB-NTN (F180-F181, F184) | SDR L/S-band + NTN test UE | shielded lab only; d2c-monitor |
+| LEO PNT / OSNMA (F182-F183) | GNSS receiver or SDR + L-band antenna | Galileo OSNMA, Xona-class PNT |
+| UWB (F185-F187) | DW3000/DWM1000 dev board | 802.15.4z ranging |
+| Matter (F189-F190) | ESP32 + Thread RCP | passcode/ACL research |
+| Ambient IoT (F191) | Rel-19 early dev hardware | batteryless clone research |
+| DECT-2020 NR (F192) | DECT NR+ dev board | 1.9 GHz mesh |
+| FRMCS/LDACS (F193-F194) | SDR (rail GSM-R / aero L-band) | rail/aero datalink |
+| 6G horizon (F195-F200) | simulation (Colosseum-class testbed) | AI-RAN/RIS/PQC/ISAC |
 
 ### Antenna Selection
 
@@ -111,6 +130,9 @@ For getting started with StaticZero telecom features:
 | WiFi 2.4G | 2400–2483 MHz | Omnidirectional | BLE/Zigbee/WiFi |
 | WiFi 5G | 5150–5850 MHz | Patch or panel | WiFi/UAV |
 | Sub-GHz | 300–433 MHz | Telescopic whip | RKE, POCSAG |
+| WiFi 6E/7 | 5925–7125 MHz | high-gain panel | MLO/AFC testing |
+| GNSS L1/L5 | 1575/1176 MHz | patch/helix | OSNMA, LEO PNT |
+| UWB | 6240–6736 MHz | UWB antenna | 802.15.4z ranging |
 
 ---
 
@@ -642,6 +664,51 @@ sudo staticzero-defense \
 5. Replay JoinRequest with same DevNonce
 6. Verify Module 44 detects nonce reuse: ALERT_LORAWAN_JOIN
 7. Test ABP session hijack (F147) with DevAddr spoofing
+
+### Scenario 12: Wi-Fi 7 MLO Link Desync
+
+1. Set up Wi-Fi 7 AP with MLO-capable client (multi-link assoc on 2.4/5/6 GHz)
+2. Capture MLO link records with monitor-mode NIC
+3. Feed captured frames to mlo-analyzer (`./target/release/mlo-analyzer < mlo_frames.jsonl`)
+4. Activate Feature F173 (MLO Link Desynchronization) to tear down a single link
+5. Verify Module 56 detects key/link mismatch: ALERT_MLO_INTEGRITY
+
+### Scenario 13: D2C Cell Spoof Detection
+
+1. Place NTN-capable test UE in RF shield box
+2. Feed UE cell reports to d2c-monitor (`./target/release/d2c-monitor < reports.jsonl`)
+3. Activate Feature F180 (Spoofed Satellite Cell) with terrestrial timing advance
+4. Verify Module 61 detects physics inconsistency: ALERT_D2C_CELL_SPOOF
+5. Combine with Feature F92 (IMSI catching) for satellite-grade IMSI catcher test
+6. Confirm correlation with Module 18 into `D2cCellSpoofing` compound threat
+
+### Scenario 14: OSNMA Bypass / LEO PNT Spoof
+
+1. Set up u-blox NEO-F9P Galileo-capable receiver capturing I/NAV pages
+2. Run osnma-verify on captured records (`./target/release/osnma-verify`)
+3. Activate Feature F183 (OSNMA Authentication Bypass) with forged/absent TESLA chain
+4. Verify Module 62 detects auth failure: ALERT_GNSS_AUTH_FAILURE
+5. Activate Feature F182 (LEO PNT Signal Spoofing) for Xona-class PNT forgery
+6. Verify Module 68 detects signal anomaly: ALERT_LEO_PNT
+7. Confirm correlation into `GnssSpoofing` compound threat
+
+### Scenario 15: Matter Passcode Attack
+
+1. Set up ESP32 + Thread RCP as Matter commissioner in RF-shielded box
+2. Configure test Matter device for commissioning (SPAKE2+ passcode)
+3. Activate Feature F189 (Matter Onboarding Passcode Attack) with low-entropy brute force
+4. Verify Module 58 detects passcode burst: ALERT_MATTER_COMMISSIONING
+5. Test F190 (ACL Manipulation) with non-atomic ACL updates
+6. Confirm correlation into smart home takeover chain
+
+### Scenario 16: 6G Simulation
+
+1. Set up simulation environment (Colosseum-class testbed or synthetic trace replay)
+2. Replay synthetic AI-RAN model-integrity violation traces
+3. Verify Module 66 detects model tampering: ALERT_AI_RAN_INTEGRITY
+4. Replay synthetic PQC handshake traces with ML-KEM → classic fallback
+5. Verify Module 67 detects downgrade: ALERT_PQC_DOWNGRADE
+6. Confirm correlation into `AiRanCompromise` compound threat (6G control plane compromise)
 
 ---
 

@@ -858,7 +858,7 @@ docker-compose -f lab/osmocom.yml up -d
 ### Satellite Direct-to-Cell & PNT (F180–F184)
 
 #### F180: Direct-to-Cell Spoofed Satellite Cell
-- **Hook:** TC classifier on modem interface
+- **Hook:** TC classifier on satellite interface
 - **Target:** SCS/NTN satellite indicators (SIB19) on D2C networks
 - **Technique:** Impersonates a satellite cell (Starlink D2C/T-Mobile, AST SpaceMobile, Skylo) to harvest registrations — the satellite IMSI catcher
 
@@ -932,7 +932,7 @@ docker-compose -f lab/osmocom.yml up -d
 - **Technique:** Injects train control and signaling messages
 
 #### F194: LDACS Aviation Datalink Injection
-- **Hook:** TC classifier on satellite interface
+- **Hook:** TC classifier on fronthaul interface
 - **Target:** L-band Digital Aeronautical Communications System
 - **Technique:** Injects ATC/OPS datalink frames planned to succeed VHF mode 2
 
@@ -1180,7 +1180,7 @@ docker-compose -f lab/osmocom.yml up -d
 - **Correlation:** Combined with ALERT_RKE_JAMMING feeds `SecureRangingSpoofing` (confidence 0.91, severity 4)
 
 #### Module 58: Matter Commissioning Anomaly
-- **Method:** PASE/ commissioning and ACL write monitoring
+- **Method:** PASE/CASE commissioning and ACL write monitoring
 - **Indicators:** Passcode attempt bursts beyond commissioning budget, ACL version regression (non-atomic update), pre-auth protocol patterns
 - **Alert:** `ALERT_MATTER_COMMISSIONING`
 - **Correlation:** Combined with Ambient IoT/DECT anomalies feeds `SmartHomeCompromise` (confidence 0.88, severity 4)
@@ -1288,6 +1288,7 @@ The `TelecomCorrelationEngine` performs cross-layer protocol correlation to iden
 | `D2cCellSpoofing` | Spoofed satellite cell | D2C cell verification + GNSS auth failure or IMSI catcher |
 | `SmartHomeCompromise` | Matter/IoT home takeover | Matter commissioning + Ambient IoT/DECT anomaly |
 | `AiRanCompromise` | 6G control plane attack | AI-RAN integrity + PQC downgrade |
+| `PqcDowngrade` | Harvest-now-decrypt-later collection | Repeated PQC handshake downgrades |
 
 ### Correlation Layers
 

@@ -930,7 +930,7 @@ fn parse_e2ap_ies(mut data: &[u8]) -> (Option<u16>, Option<u16>, Vec<E2ApIe>) {
     (request_id, ran_function_id, ies)
 }
 
-// ── F1AP (F1 Interface — 3GPP TS 38.423, CU↔DU split) ────────────────────────
+// ── F1AP (F1 Interface — 3GPP TS 38.470/38.473, CU↔DU split) ─────────────────
 
 pub const F1AP_PORT: u16 = 38472; // SCTP port for F1-C between gNB-CU and gNB-DU
 

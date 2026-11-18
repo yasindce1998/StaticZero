@@ -908,6 +908,28 @@ impl TelecomCorrelationEngine {
             }
         }
 
+        // PQC downgrade (standalone detection): repeated quantum-safe →
+        // classic fallbacks indicate systematic harvest-now-decrypt-later
+        // collection rather than a one-off compatibility fallback.
+        if layers.contains(&TelecomLayer::Nas) {
+            let nas_events = window.events_in_layer(TelecomLayer::Nas);
+            let pqc_downgrades = nas_events
+                .iter()
+                .filter(|e| e.event_type == ALERT_PQC_DOWNGRADE)
+                .count();
+            if pqc_downgrades >= 2 {
+                let threat = self.build_threat(
+                    ThreatCategory::PqcDowngrade,
+                    0.85,
+                    4,
+                    vec![TelecomLayer::Nas],
+                    window.events.iter().cloned().collect(),
+                    "Repeated PQC handshake downgrades — harvest-now-decrypt-later collection in progress",
+                );
+                return Some(threat);
+            }
+        }
+
         // Secure ranging attack: UWB/BT CS anomaly + RKE jamming = vehicle access theft chain
         if layers.contains(&TelecomLayer::Radio) {
             let radio_events = window.events_in_layer(TelecomLayer::Radio);
@@ -1443,6 +1465,26 @@ mod tests {
         assert_eq!(t.category, ThreatCategory::AiRanCompromise);
         assert!((t.confidence - 0.90).abs() < 1e-9);
         assert_eq!(t.severity, 5);
+    }
+
+    #[test]
+    fn test_repeated_pqc_downgrade_standalone_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let ctx: u64 = 0x0F11;
+
+        // A single downgrade is a compatibility fallback, not a threat.
+        let a1 = make_alert(ALERT_PQC_DOWNGRADE, 3, 1_000_000_000, ctx);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        // A second downgrade in the same window is systematic collection.
+        let a2 = make_alert(ALERT_PQC_DOWNGRADE, 4, 2_000_000_000, ctx);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::PqcDowngrade);
+        assert!((t.confidence - 0.85).abs() < 1e-9);
+        assert_eq!(t.severity, 4);
     }
 
     #[test]

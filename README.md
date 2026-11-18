@@ -38,7 +38,7 @@ staticzero/
 └── scripts/          # Lab automation
 ```
 
-## Offensive Capabilities (F89–F172)
+## Offensive Capabilities (F89–F200)
 
 ### Core Telecom Interception (F89–F100)
 
@@ -225,7 +225,7 @@ staticzero/
 
 | # | Feature | Hook Point | Target |
 |---|---------|-----------|--------|
-| 180 | Direct-to-Cell Spoofed Satellite Cell | TC on modem iface | SCS/NTN indicator spoof, satellite IMSI catcher |
+| 180 | Direct-to-Cell Spoofed Satellite Cell | TC on sat-iface | SCS/NTN indicator spoof, satellite IMSI catcher |
 | 181 | NTN Regenerative gNB Injection | TC (SCTP:38412) | Rel-19 gNB-on-board feeder link NGAP |
 | 182 | LEO PNT Signal Spoofing | XDP on SDR iface | Xona Pulsar-class LEO positioning forgery |
 | 183 | Galileo OSNMA Authentication Bypass Probe | kprobe: `sdr_rx_callback` | Forged I/NAV with absent/inconsistent TESLA chains |
@@ -249,7 +249,7 @@ staticzero/
 | 191 | Ambient IoT Device Cloning | TC classifier | Rel-19 batteryless class-A backscatter identity spoof |
 | 192 | DECT-2020 NR Mesh Injection | XDP on WPAN iface | 1.9 GHz massive-mesh signaling injection |
 | 193 | FRMCS Railway Signaling Injection | TC (SCTP:38422) | 5G-based GSM-R successor, train control |
-| 194 | LDACS Aviation Datalink Injection | TC on sat-iface | L-band aeronautical ATC/OPS datalink |
+| 194 | LDACS Aviation Datalink Injection | TC on fronthaul iface | L-band aeronautical ATC/OPS datalink |
 
 ### 6G Horizon (F195–F200)
 
@@ -369,9 +369,9 @@ staticzero/
 | 59 | Ambient IoT Device Identity Anomaly | Duplicate batteryless IDs with divergent power, clone fingerprints |
 | 60 | DECT-2020 NR Mesh Integrity | Rogue relay joins, cluster param changes, unauthenticated mesh frames |
 | 61 | D2C Satellite Cell Verification | Terrestrial timing advance on satellite cell, missing ephemeris, doppler mismatch |
-| 62 | GNSS Authentication Monitor | Galileo OSNMA tesla chain failures, SAS verdicts, I/NAV inconsistencies |
+| 62 | GNSS Authentication Monitor (OSNMA) | Galileo OSNMA tesla chain failures, SAS verdicts, I/NAV inconsistencies |
 | 63 | NTN Regenerative Payload Anomaly | Feeder-link NGAP from unregistered gNB-on-board, ephemeris/TA mismatch |
-| 64 | Wi-Fi Sensing Privacy Guard | 802.11bf sensing poll floods, unsolicited measurement requests |
+| 64 | Wi-Fi Sensing Privacy Guard (802.11bf) | 802.11bf sensing poll floods, unsolicited measurement requests |
 | 65 | FRMCS/LDACS Transport Signaling Integrity | Train/aircraft signaling from unauthorized sources, procedure violations |
 | 66 | AI-RAN Model Integrity Monitor | Model/perturbation anomalies, adversarial inference patterns |
 | 67 | PQC Handshake Downgrade Detection | Quantum-safe → classic fallback transitions, suite inconsistency |
@@ -417,7 +417,7 @@ Hardware-abstracted radio interface supporting HackRF, bladeRF, USRP, RTL-SDR, a
 - **NGAP** (N2: AMF↔gNB) — UE context, handover, PDU session, paging per TS 38.413
 - **XnAP** (Xn: gNB↔gNB) — Handover preparation, SN status transfer, RAN paging per TS 38.423
 - **E2AP** (E2: near-RT RIC↔eNB/gNB) — RIC subscription, control, indication per O-RAN.WG3
-- **F1AP** (F1: gNB-CU↔gNB-DU) — UE context setup, RRC transfer per TS 38.423
+- **F1AP** (F1: gNB-CU↔gNB-DU) — UE context setup, RRC transfer per TS 38.470/38.473
 
 ### Next-Generation Tools
 

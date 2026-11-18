@@ -84,6 +84,26 @@ struct Cli {
     #[arg(long)]
     rf_defense: bool,
 
+    /// Enable next-gen Wi-Fi defense modules (56, 64, 69: MLO integrity, 802.11bf sensing, MAPC/HaLow)
+    #[arg(long)]
+    nextgen_wifi_defense: bool,
+
+    /// Enable satellite direct-to-cell / PNT defense modules (61-63, 68: D2C cell, OSNMA, NTN regen, LEO PNT)
+    #[arg(long)]
+    d2c_defense: bool,
+
+    /// Enable secure ranging defense module (57: UWB / BT channel sounding)
+    #[arg(long)]
+    secure_ranging_defense: bool,
+
+    /// Enable next-gen IoT defense modules (58-60, 65: Matter, Ambient IoT, DECT-2020, FRMCS/LDACS)
+    #[arg(long)]
+    nextgen_iot_defense: bool,
+
+    /// Enable 6G horizon defense modules (66-67, 70: AI-RAN, PQC downgrade, network-of-networks)
+    #[arg(long)]
+    sixg_defense: bool,
+
     /// Enable all detection modules
     #[arg(long)]
     all: bool,
@@ -118,6 +138,14 @@ async fn main() -> Result<()> {
         (cli.all || cli.telecom_5g_defense, ProbeGroup::Core),
         (cli.all || cli.satellite_defense, ProbeGroup::Satellite),
         (cli.all || cli.rf_defense, ProbeGroup::Rf),
+        (cli.all || cli.nextgen_wifi_defense, ProbeGroup::NextGenWifi),
+        (cli.all || cli.d2c_defense, ProbeGroup::D2c),
+        (
+            cli.all || cli.secure_ranging_defense,
+            ProbeGroup::SecureRanging,
+        ),
+        (cli.all || cli.nextgen_iot_defense, ProbeGroup::NextGenIot),
+        (cli.all || cli.sixg_defense, ProbeGroup::SixG),
     ] {
         if enabled {
             groups.push(group);

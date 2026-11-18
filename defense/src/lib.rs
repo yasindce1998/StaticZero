@@ -19,16 +19,20 @@ pub mod server;
 use std::collections::{HashMap as StdHashMap, HashSet, VecDeque};
 
 use common::{
-    DefenseAlert, ALERT_AIS_INTEGRITY, ALERT_AVIATION_INTEGRITY, ALERT_BLE_PAIRING,
-    ALERT_BROADCAST_INJECTION, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK, ALERT_DVBS2_ANOMALY,
-    ALERT_EAS_SPOOFING, ALERT_ESIM_TAMPER, ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY,
-    ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER, ALERT_LEO_SIGNALING, ALERT_LORAWAN_JOIN,
-    ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY, ALERT_NBIOT_RRC, ALERT_NTN_ANOMALY, ALERT_ORAN_FRONTHAUL,
-    ALERT_ORAN_RIC, ALERT_P25_CONTROL, ALERT_PAGER_ANOMALY, ALERT_RAN_SHARING_LEAK,
-    ALERT_RF_FINGERPRINT, ALERT_RKE_JAMMING, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER,
-    ALERT_SBI_ANOMALY, ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY,
-    ALERT_STARLINK_AUTH, ALERT_TETRA_ENCRYPTION, ALERT_UAV_C2, ALERT_VOLTE_FRAUD,
-    ALERT_VSAT_INTEGRITY, ALERT_WIFI_DEAUTH, ALERT_WPA3_INTEGRITY, ALERT_ZIGBEE_KEY,
+    DefenseAlert, ALERT_AIS_INTEGRITY, ALERT_AI_RAN_INTEGRITY, ALERT_AMBIENT_IOT,
+    ALERT_AVIATION_INTEGRITY, ALERT_BLE_PAIRING, ALERT_BROADCAST_INJECTION, ALERT_CELL_ANOMALY,
+    ALERT_D2C_CELL_SPOOF, ALERT_DECT2020_INTEGRITY, ALERT_DOWNGRADE_ATTACK, ALERT_DVBS2_ANOMALY,
+    ALERT_EAS_SPOOFING, ALERT_ESIM_TAMPER, ALERT_FRMCS_LDACS, ALERT_GNSS_AUTH_FAILURE,
+    ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY, ALERT_HANDOVER_INTEGRITY, ALERT_IMSI_CATCHER,
+    ALERT_LEO_PNT, ALERT_LEO_SIGNALING, ALERT_LORAWAN_JOIN, ALERT_MAPC_INTEGRITY,
+    ALERT_MATTER_COMMISSIONING, ALERT_MLO_INTEGRITY, ALERT_MODEM_TAMPER, ALERT_NAS_REPLAY,
+    ALERT_NBIOT_RRC, ALERT_NON_CREDENTIAL_ABUSE, ALERT_NTN_ANOMALY, ALERT_NTN_REGEN_ANOMALY,
+    ALERT_ORAN_FRONTHAUL, ALERT_ORAN_RIC, ALERT_P25_CONTROL, ALERT_PAGER_ANOMALY,
+    ALERT_PQC_DOWNGRADE, ALERT_RAN_SHARING_LEAK, ALERT_RF_FINGERPRINT, ALERT_RKE_JAMMING,
+    ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER, ALERT_SBI_ANOMALY, ALERT_SECURE_RANGING,
+    ALERT_SIGNALING_STORM, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_STARLINK_AUTH,
+    ALERT_TETRA_ENCRYPTION, ALERT_UAV_C2, ALERT_VOLTE_FRAUD, ALERT_VSAT_INTEGRITY,
+    ALERT_WIFI_DEAUTH, ALERT_WIFI_SENSING, ALERT_WPA3_INTEGRITY, ALERT_ZIGBEE_KEY,
 };
 use serde::{Deserialize, Serialize};
 
@@ -127,6 +131,60 @@ pub fn format_alert_details(alert: &DefenseAlert) -> String {
         ALERT_AIS_INTEGRITY => {
             format!("mmsi={}, sog_cog={}", alert.context, detail_u64)
         }
+        ALERT_MLO_INTEGRITY => {
+            format!("mld_hash={}, desync/key_gen={}", alert.context, detail_u64)
+        }
+        ALERT_SECURE_RANGING => {
+            format!(
+                "session_hash={}, ranging_type={}",
+                alert.context, detail_u64
+            )
+        }
+        ALERT_MATTER_COMMISSIONING => {
+            format!("node_hash={}, attempts/acl={}", alert.context, detail_u64)
+        }
+        ALERT_AMBIENT_IOT => {
+            format!("device_hash={}, rssi_delta={}", alert.context, detail_u64)
+        }
+        ALERT_DECT2020_INTEGRITY => {
+            format!("relay_hash={}, cluster_flags={}", alert.context, detail_u64)
+        }
+        ALERT_D2C_CELL_SPOOF => {
+            format!(
+                "cell_global_id={}, timing_advance={}",
+                alert.context, detail_u64
+            )
+        }
+        ALERT_GNSS_AUTH_FAILURE => {
+            format!("sat_id={}, osnma_status={}", alert.context, detail_u64)
+        }
+        ALERT_NTN_REGEN_ANOMALY => {
+            format!("feeder_id={}, amf_ue_id={}", alert.context, detail_u64)
+        }
+        ALERT_WIFI_SENSING => {
+            format!("bssid_hash={}, poll_interval={}", alert.context, detail_u64)
+        }
+        ALERT_FRMCS_LDACS => {
+            format!("entity_hash={}, procedure={}", alert.context, detail_u64)
+        }
+        ALERT_AI_RAN_INTEGRITY => {
+            format!("model_hash={}, perturbation={}", alert.context, detail_u64)
+        }
+        ALERT_PQC_DOWNGRADE => {
+            format!("peer_hash={}, suite/fallback={}", alert.context, detail_u64)
+        }
+        ALERT_LEO_PNT => {
+            format!("sat_id={}, cn0/doppler={}", alert.context, detail_u64)
+        }
+        ALERT_MAPC_INTEGRITY => {
+            format!("bssid_hash={}, coordination={}", alert.context, detail_u64)
+        }
+        ALERT_NON_CREDENTIAL_ABUSE => {
+            format!(
+                "credential_hash={}, source_network={}",
+                alert.context, detail_u64
+            )
+        }
         _ => format!("context={}", alert.context),
     }
 }
@@ -192,6 +250,11 @@ pub enum ThreatCategory {
     WifiRogueAp,
     FronthaulCompromise,
     AisSpoofing,
+    SecureRangingSpoofing,
+    D2cCellSpoofing,
+    SmartHomeCompromise,
+    AiRanCompromise,
+    PqcDowngrade,
 }
 
 #[derive(Debug, Clone)]
@@ -338,6 +401,21 @@ impl TelecomCorrelationEngine {
             | ALERT_EAS_SPOOFING => TelecomLayer::Radio,
             ALERT_ORAN_FRONTHAUL | ALERT_ORAN_RIC => TelecomLayer::Core,
             ALERT_AIS_INTEGRITY => TelecomLayer::Satellite,
+            // Next-generation wireless modules (56-70)
+            ALERT_MLO_INTEGRITY
+            | ALERT_WIFI_SENSING
+            | ALERT_MAPC_INTEGRITY
+            | ALERT_SECURE_RANGING
+            | ALERT_MATTER_COMMISSIONING
+            | ALERT_AMBIENT_IOT
+            | ALERT_DECT2020_INTEGRITY => TelecomLayer::Radio,
+            ALERT_D2C_CELL_SPOOF
+            | ALERT_GNSS_AUTH_FAILURE
+            | ALERT_NTN_REGEN_ANOMALY
+            | ALERT_LEO_PNT => TelecomLayer::Satellite,
+            ALERT_FRMCS_LDACS => TelecomLayer::Signaling,
+            ALERT_AI_RAN_INTEGRITY | ALERT_NON_CREDENTIAL_ABUSE => TelecomLayer::Core,
+            ALERT_PQC_DOWNGRADE => TelecomLayer::Nas,
             _ => TelecomLayer::Core,
         };
 
@@ -694,6 +772,165 @@ impl TelecomCorrelationEngine {
             }
         }
 
+        // ── Next-generation wireless patterns (Modules 56-70) ────────────────
+
+        // D2C cell spoof: spoofed satellite cell + failed GNSS authentication
+        if layers.contains(&TelecomLayer::Satellite) {
+            let sat_events = window.events_in_layer(TelecomLayer::Satellite);
+            let has_d2c_spoof = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_D2C_CELL_SPOOF);
+            let has_gnss_auth_fail = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_GNSS_AUTH_FAILURE);
+            let has_leo_pnt = sat_events.iter().any(|e| e.event_type == ALERT_LEO_PNT);
+
+            if has_d2c_spoof && has_gnss_auth_fail {
+                let threat = self.build_threat(
+                    ThreatCategory::D2cCellSpoofing,
+                    0.92,
+                    5,
+                    vec![TelecomLayer::Satellite],
+                    window.events.iter().cloned().collect(),
+                    "Spoofed direct-to-cell satellite cell with failed GNSS authentication — D2C impersonation (satellite IMSI catcher)",
+                );
+                return Some(threat);
+            }
+
+            // LEO PNT anomaly + OSNMA failure = next-generation PNT spoofing
+            if has_leo_pnt && has_gnss_auth_fail {
+                let threat = self.build_threat(
+                    ThreatCategory::GnssSpoofing,
+                    0.93,
+                    5,
+                    vec![TelecomLayer::Satellite],
+                    window.events.iter().cloned().collect(),
+                    "LEO PNT signal anomaly with Galileo OSNMA authentication failure — multi-constellation PNT spoofing",
+                );
+                return Some(threat);
+            }
+        }
+
+        // D2C spoofed satellite cell + NAS identity harvesting = satellite-grade IMSI catching
+        if layers.contains(&TelecomLayer::Satellite) && layers.contains(&TelecomLayer::Nas) {
+            let sat_events = window.events_in_layer(TelecomLayer::Satellite);
+            let nas_events = window.events_in_layer(TelecomLayer::Nas);
+            let has_d2c_spoof = sat_events
+                .iter()
+                .any(|e| e.event_type == ALERT_D2C_CELL_SPOOF);
+            let has_imsi_catch = nas_events
+                .iter()
+                .any(|e| e.event_type == ALERT_IMSI_CATCHER);
+
+            if has_d2c_spoof && has_imsi_catch {
+                let threat = self.build_threat(
+                    ThreatCategory::D2cCellSpoofing,
+                    0.95,
+                    5,
+                    vec![TelecomLayer::Satellite, TelecomLayer::Nas],
+                    window.events.iter().cloned().collect(),
+                    "Spoofed satellite cell harvesting subscriber identities over NAS — satellite-grade IMSI catching",
+                );
+                return Some(threat);
+            }
+        }
+
+        // Smart home compromise: Matter commissioning abuse + Ambient IoT or DECT-2020 anomaly
+        if layers.contains(&TelecomLayer::Radio) {
+            let radio_events = window.events_in_layer(TelecomLayer::Radio);
+            let has_matter = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_MATTER_COMMISSIONING);
+            let has_ambient = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_AMBIENT_IOT);
+            let has_dect = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_DECT2020_INTEGRITY);
+
+            if has_matter && (has_ambient || has_dect) {
+                let threat = self.build_threat(
+                    ThreatCategory::SmartHomeCompromise,
+                    0.88,
+                    4,
+                    vec![TelecomLayer::Radio],
+                    window.events.iter().cloned().collect(),
+                    "Matter commissioning attack with correlated IoT radio anomaly — smart home takeover chain",
+                );
+                return Some(threat);
+            }
+        }
+
+        // Wi-Fi 7 MLO evil twin: MLO key/desync abuse + WPA3 integrity failure
+        if layers.contains(&TelecomLayer::Radio) {
+            let radio_events = window.events_in_layer(TelecomLayer::Radio);
+            let has_mlo = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_MLO_INTEGRITY);
+            let has_wpa3 = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_WPA3_INTEGRITY);
+
+            if has_mlo && has_wpa3 {
+                let threat = self.build_threat(
+                    ThreatCategory::WifiRogueAp,
+                    0.93,
+                    4,
+                    vec![TelecomLayer::Radio],
+                    window.events.iter().cloned().collect(),
+                    "Wi-Fi 7 MLO link/key abuse with WPA3 integrity failure — MLO evil twin attack",
+                );
+                return Some(threat);
+            }
+        }
+
+        // 6G control plane compromise: AI-RAN model tampering + PQC downgrade
+        if layers.contains(&TelecomLayer::Core) && layers.contains(&TelecomLayer::Nas) {
+            let core_events = window.events_in_layer(TelecomLayer::Core);
+            let nas_events = window.events_in_layer(TelecomLayer::Nas);
+            let has_ai_ran = core_events
+                .iter()
+                .any(|e| e.event_type == ALERT_AI_RAN_INTEGRITY);
+            let has_pqc = nas_events
+                .iter()
+                .any(|e| e.event_type == ALERT_PQC_DOWNGRADE);
+
+            if has_ai_ran && has_pqc {
+                let threat = self.build_threat(
+                    ThreatCategory::AiRanCompromise,
+                    0.90,
+                    5,
+                    vec![TelecomLayer::Core, TelecomLayer::Nas],
+                    window.events.iter().cloned().collect(),
+                    "AI-RAN model integrity failure with PQC handshake downgrade — 6G control plane compromise (harvest-now-decrypt-later)",
+                );
+                return Some(threat);
+            }
+        }
+
+        // Secure ranging attack: UWB/BT CS anomaly + RKE jamming = vehicle access theft chain
+        if layers.contains(&TelecomLayer::Radio) {
+            let radio_events = window.events_in_layer(TelecomLayer::Radio);
+            let has_ranging = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_SECURE_RANGING);
+            let has_rke = radio_events
+                .iter()
+                .any(|e| e.event_type == ALERT_RKE_JAMMING);
+
+            if has_ranging && has_rke {
+                let threat = self.build_threat(
+                    ThreatCategory::SecureRangingSpoofing,
+                    0.91,
+                    4,
+                    vec![TelecomLayer::Radio],
+                    window.events.iter().cloned().collect(),
+                    "Secure ranging manipulation with RKE jamming — vehicle digital key theft chain",
+                );
+                return Some(threat);
+            }
+        }
+
         None
     }
 
@@ -836,11 +1073,13 @@ impl Default for TelecomCorrelationEngine {
 mod tests {
     use super::*;
     use common::{
-        DefenseAlert, ALERT_AIS_INTEGRITY, ALERT_CELL_ANOMALY, ALERT_DOWNGRADE_ATTACK,
-        ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY, ALERT_IMSI_CATCHER, ALERT_ORAN_FRONTHAUL,
-        ALERT_ORAN_RIC, ALERT_RF_FINGERPRINT, ALERT_ROAMING_ANOMALY, ALERT_ROGUE_TOWER,
-        ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY, ALERT_VOLTE_FRAUD, ALERT_WIFI_DEAUTH,
-        ALERT_WPA3_INTEGRITY,
+        DefenseAlert, ALERT_AIS_INTEGRITY, ALERT_AI_RAN_INTEGRITY, ALERT_AMBIENT_IOT,
+        ALERT_CELL_ANOMALY, ALERT_D2C_CELL_SPOOF, ALERT_DOWNGRADE_ATTACK, ALERT_GNSS_AUTH_FAILURE,
+        ALERT_GNSS_SPOOFING, ALERT_GTP_ANOMALY, ALERT_IMSI_CATCHER, ALERT_LEO_PNT,
+        ALERT_MATTER_COMMISSIONING, ALERT_MLO_INTEGRITY, ALERT_ORAN_FRONTHAUL, ALERT_ORAN_RIC,
+        ALERT_PQC_DOWNGRADE, ALERT_RF_FINGERPRINT, ALERT_RKE_JAMMING, ALERT_ROAMING_ANOMALY,
+        ALERT_ROGUE_TOWER, ALERT_SECURE_RANGING, ALERT_SLICE_VIOLATION, ALERT_SS7_ANOMALY,
+        ALERT_VOLTE_FRAUD, ALERT_WIFI_DEAUTH, ALERT_WPA3_INTEGRITY,
     };
 
     fn make_alert(alert_type: u32, severity: u32, timestamp_ns: u64, context: u64) -> DefenseAlert {
@@ -1114,5 +1353,129 @@ mod tests {
         assert!((t.confidence - 0.94).abs() < 1e-9);
         assert_eq!(t.severity, 5);
         assert!(t.layers_involved.contains(&TelecomLayer::Satellite));
+    }
+
+    #[test]
+    fn test_d2c_cell_spoofing_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let cell: u64 = 0xC0FFEE;
+
+        let a1 = make_alert(ALERT_D2C_CELL_SPOOF, 5, 1_000_000_000, cell);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_GNSS_AUTH_FAILURE, 4, 2_000_000_000, cell);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::D2cCellSpoofing);
+        assert!(t.confidence >= 0.9);
+        assert_eq!(t.severity, 5);
+        assert!(t.layers_involved.contains(&TelecomLayer::Satellite));
+    }
+
+    #[test]
+    fn test_d2c_cell_with_imsi_harvesting() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let cell: u64 = 0xD2C001;
+
+        let a1 = make_alert(ALERT_D2C_CELL_SPOOF, 5, 1_000_000_000, cell);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_IMSI_CATCHER, 4, 2_000_000_000, cell);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::D2cCellSpoofing);
+        assert!((t.confidence - 0.95).abs() < 1e-9);
+        assert!(t.layers_involved.contains(&TelecomLayer::Nas));
+    }
+
+    #[test]
+    fn test_smart_home_compromise_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let node: u64 = 0xAB0DE;
+
+        let a1 = make_alert(ALERT_MATTER_COMMISSIONING, 4, 1_000_000_000, node);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_AMBIENT_IOT, 4, 2_000_000_000, node);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::SmartHomeCompromise);
+        assert!(t.confidence >= 0.85);
+        assert_eq!(t.severity, 4);
+    }
+
+    #[test]
+    fn test_mlo_evil_twin_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let mld: u64 = 0xBE7BE;
+
+        let a1 = make_alert(ALERT_MLO_INTEGRITY, 4, 1_000_000_000, mld);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_WPA3_INTEGRITY, 4, 2_000_000_000, mld);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::WifiRogueAp);
+        assert!((t.confidence - 0.93).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_ai_ran_pqc_compromise_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let ctx: u64 = 0xA16A;
+
+        let a1 = make_alert(ALERT_AI_RAN_INTEGRITY, 5, 1_000_000_000, ctx);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_PQC_DOWNGRADE, 4, 2_000_000_000, ctx);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::AiRanCompromise);
+        assert!((t.confidence - 0.90).abs() < 1e-9);
+        assert_eq!(t.severity, 5);
+    }
+
+    #[test]
+    fn test_secure_ranging_theft_chain_correlation() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let ctx: u64 = 0x4B3A;
+
+        let a1 = make_alert(ALERT_SECURE_RANGING, 4, 1_000_000_000, ctx);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_RKE_JAMMING, 4, 2_000_000_000, ctx);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::SecureRangingSpoofing);
+        assert!(t.confidence >= 0.9);
+    }
+
+    #[test]
+    fn test_leo_pnt_with_osnma_failure() {
+        let mut engine = TelecomCorrelationEngine::new(60);
+        let sat: u64 = 0x5A7;
+
+        let a1 = make_alert(ALERT_LEO_PNT, 4, 1_000_000_000, sat);
+        assert!(engine.ingest_alert(&a1).is_none());
+
+        let a2 = make_alert(ALERT_GNSS_AUTH_FAILURE, 4, 2_000_000_000, sat);
+        let threat = engine.ingest_alert(&a2);
+
+        assert!(threat.is_some());
+        let t = threat.unwrap();
+        assert_eq!(t.category, ThreatCategory::GnssSpoofing);
+        assert!(t.confidence >= 0.9);
     }
 }

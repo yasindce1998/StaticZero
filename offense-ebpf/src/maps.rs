@@ -3,13 +3,15 @@ use aya_ebpf::{
     maps::{HashMap, RingBuf},
 };
 use common::{
-    AdsbAircraftState, AisVesselState, AkaAuthState, BleLinkState, BroadcastInjectState, CellInfo,
-    EcpriFronthaulState, EsimProvisionCtx, FemtocellCtx, GnssSignalState, GtpTunnelState,
-    HandoverCtx, ImsSipSession, LiInterfaceState, LmrRadioState, LoRaSessionState, MimoBeamState,
-    NetworkSliceInfo, NrfRegistration, NtnTimingState, OranRicState, PagerMessageState,
-    RkeFobState, RoamingState, RootkitConfig, RtpStreamState, SatelliteLinkState, SbiSessionState,
-    SidelinkCtx, SignalingState, StarlinkSessionState, SuplSpoofState, UavLinkState,
-    VoWiFiTunnelState, WifiClientState, WpanNetworkState,
+    AdsbAircraftState, AiRanModelState, AisVesselState, AkaAuthState, AmbientIotState,
+    BleLinkState, BroadcastInjectState, CellInfo, D2cCellState, EcpriFronthaulState,
+    EsimProvisionCtx, FemtocellCtx, GnssSignalState, GtpTunnelState, HandoverCtx, ImsSipSession,
+    LeoPntState, LiInterfaceState, LmrRadioState, LoRaSessionState, MatterSessionState,
+    MimoBeamState, MloLinkState, NetworkSliceInfo, NrfRegistration, NtnTimingState, OranRicState,
+    PagerMessageState, PqcHandshakeState, RkeFobState, RoamingState, RootkitConfig, RtpStreamState,
+    SatelliteLinkState, SbiSessionState, SecureRangingState, SidelinkCtx, SignalingState,
+    StarlinkSessionState, SuplSpoofState, UavLinkState, VoWiFiTunnelState, WifiClientState,
+    WpanNetworkState,
 };
 
 // ──────────────────────────────────────────────
@@ -229,3 +231,36 @@ pub(crate) static ORAN_RIC_STATE: HashMap<u32, OranRicState> = HashMap::with_max
 #[map]
 pub(crate) static AIS_VESSEL_STATE: HashMap<u32, AisVesselState> =
     HashMap::with_max_entries(128, 0);
+
+// ──────────────────────────────────────────────
+// Category 10: Next-Generation Wireless Maps (F173-F200)
+// ──────────────────────────────────────────────
+
+#[map]
+pub(crate) static MLO_LINK_STATE: HashMap<u32, MloLinkState> = HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static D2C_CELL_STATE: HashMap<u32, D2cCellState> = HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static SECURE_RANGING_STATE: HashMap<u32, SecureRangingState> =
+    HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static MATTER_SESSION_STATE: HashMap<u64, MatterSessionState> =
+    HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static AMBIENT_IOT_STATE: HashMap<u32, AmbientIotState> =
+    HashMap::with_max_entries(128, 0);
+
+#[map]
+pub(crate) static LEO_PNT_STATE: HashMap<u32, LeoPntState> = HashMap::with_max_entries(64, 0);
+
+#[map]
+pub(crate) static AI_RAN_MODEL_STATE: HashMap<u32, AiRanModelState> =
+    HashMap::with_max_entries(32, 0);
+
+#[map]
+pub(crate) static PQC_HANDSHAKE_STATE: HashMap<u32, PqcHandshakeState> =
+    HashMap::with_max_entries(64, 0);

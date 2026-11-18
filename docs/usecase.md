@@ -4,8 +4,8 @@
 
 - [Use Cases](#use-cases)
 - [How-To Guides](#how-to-guides)
-- [Offense Capabilities (F89–F172)](#offense-capabilities-f89f172)
-- [Defense Capabilities (Modules 16–55)](#defense-capabilities-modules-1655)
+- [Offense Capabilities (F89–F200)](#offense-capabilities-f89f200)
+- [Defense Capabilities (Modules 16–70)](#defense-capabilities-modules-1670)
 - [Correlation Engine](#correlation-engine)
 - [SDR Integration](#sdr-integration)
 - [Protocol Dissectors](#protocol-dissectors)
@@ -146,6 +146,41 @@ Test vehicle remote keyless entry systems for replay and relay vulnerabilities.
 **Actors:** Automotive OEMs, vehicle security researchers  
 **Scenario:** Use F156 (RollJam) and F157 (Relay/Amplification) in a shielded environment. Validate Module 48 (RKE Jamming Detection) identifies sustained RF jamming coinciding with key fob failures.
 
+### 19. Wi-Fi 7 Multi-Link Operation Security Testing
+
+Evaluate MLO key separation, link desynchronization, and coordination attacks against Wi-Fi 7 infrastructure.
+
+**Actors:** Enterprise WLAN vendors, Wi-Fi Alliance members, corporate security teams  
+**Scenario:** Deploy F173 (MLO Link Desync) and F174 (MLO Key Abuse) in an isolated RF lab with a Wi-Fi 7 AP. Use `mlo-analyzer` on captured frame records. Validate Module 56 (MLO Integrity Monitor) detects key-generation mismatches and sequence regression across the MLD's links.
+
+### 20. Satellite Direct-to-Cell Impersonation Research
+
+Research spoofed satellite cells against D2C-capable handsets (Starlink D2C, AST SpaceMobile, Skylo).
+
+**Actors:** MNO satellite divisions, handset vendors, defense agencies  
+**Scenario:** Use `d2c-monitor` to score observed cells for physics consistency (timing advance, doppler, ephemeris). Deploy F180 (D2C Cell Spoof) in a shielded lab with test UEs. Validate Module 61 flags satellite-indicated cells with terrestrial parameters, and that correlation with Module 18 (IMSI Catcher) produces the `D2cCellSpoofing` threat.
+
+### 21. GNSS Authentication Verification (Galileo OSNMA)
+
+Cryptographically verify Galileo navigation messages and detect spoofing beyond C/N0 heuristics.
+
+**Actors:** PNT researchers, critical-infrastructure operators, aviation/maritime authorities  
+**Scenario:** Run `osnma-verify` against captured I/NAV OSNMA records (self-test first with `osnma-verify selftest`). Validate Module 62 ingests OSNMA failure verdicts and that OSNMA failure + LEO PNT anomaly (Module 68) correlates into the `GnssSpoofing` threat.
+
+### 22. Smart Home Matter Commissioning Audit
+
+Test Matter onboarding and access-control robustness in a home lab.
+
+**Actors:** CSA members, smart-home vendors, IoT security researchers  
+**Scenario:** Deploy F189 (Matter Passcode Attack) against a test commissioner with a lab device, and F190 (ACL Manipulation) to probe non-atomic update handling (CVE-2024-56317 class). Validate Module 58 flags passcode attempt bursts and ACL version regression.
+
+### 23. 6G Horizon Attack Surface Research
+
+Catalog adversarial ML, RIS, THz, and PQC downgrade surfaces ahead of 3GPP Release 20 specification.
+
+**Actors:** 6G research labs, standards delegates, telecom vendors  
+**Scenario:** Review [NEXTGEN_RESEARCH.md](NEXTGEN_RESEARCH.md) for the standards basis. Deploy F195–F200 scaffolding in simulation (OpenAIInterface/Colosseum-class testbeds). Validate Modules 66/67/70 detection logic on synthetic model-integrity and handshake traces; correlate AI-RAN tampering + PQC downgrade into the `AiRanCompromise` threat.
+
 ---
 
 ## How-To Guides
@@ -285,6 +320,37 @@ sudo ./target/release/staticzero-defense --oran_defense
 sudo ./target/release/staticzero-defense --ais_defense
 ```
 
+### Running Next-Generation Modules
+
+```bash
+# Wi-Fi 6/6E/7/8 + sensing (F173-F179)
+sudo ./target/release/staticzero-offense --enable-nextgen-wifi --wifi-iface wlan0
+
+# Satellite direct-to-cell & PNT (F180-F184)
+sudo ./target/release/staticzero-offense --enable-d2c --sat-iface sat0 --sdr-iface sdr0
+
+# UWB / secure ranging / BT 6.0 (F185-F188)
+sudo ./target/release/staticzero-offense --enable-secure-ranging --sdr-iface sdr0
+
+# Matter / Ambient IoT / DECT-2020 / FRMCS / LDACS (F189-F194)
+sudo ./target/release/staticzero-offense --enable-nextgen-iot --wpan-iface wpan0
+
+# 6G horizon (F195-F200)
+sudo ./target/release/staticzero-offense --enable-6g --sdr-iface sdr0
+
+# Corresponding defense modules
+sudo ./target/release/staticzero-defense --nextgen_wifi_defense
+sudo ./target/release/staticzero-defense --d2c_defense
+sudo ./target/release/staticzero-defense --secure_ranging_defense
+sudo ./target/release/staticzero-defense --nextgen_iot_defense
+sudo ./target/release/staticzero-defense --sixg_defense
+
+# Next-generation analysis tools
+./target/release/osnma-verify selftest        # HMAC/SHA known-answer tests
+./target/release/d2c-monitor < cells.jsonl    # spoofed satellite cell scoring
+./target/release/mlo-analyzer < frames.jsonl  # Wi-Fi 7 MLO attack findings
+```
+
 ### Configuration File
 
 The defense engine reads `/etc/staticzero/config.toml` (or path specified with `--config`):
@@ -360,7 +426,7 @@ docker-compose -f lab/osmocom.yml up -d
 
 ---
 
-## Offense Capabilities (F89–F172)
+## Offense Capabilities (F89–F200)
 
 ### Core Telecom Interception (F89–F100)
 
@@ -752,9 +818,159 @@ docker-compose -f lab/osmocom.yml up -d
 - **Target:** AIS Class A/B position reports and CPA/TCPA calculations
 - **Technique:** Injects ghost vessel tracks calculated to trigger CPA (Closest Point of Approach) and TCPA (Time to CPA) alarms, forcing shipping lane diversions or port closures
 
+### Next-Generation Wi-Fi 6/6E/7/8 (F173–F179)
+
+#### F173: MLO Link Desynchronization Attack
+- **Hook:** TC classifier on WLAN interface
+- **Target:** 802.11be Multi-Link Elements of a Multi-Link Device
+- **Technique:** Tears down or desyncs one link of an MLO set (sequence regression), forcing fallback to a single weaker link
+
+#### F174: MLO Key Separation Abuse
+- **Hook:** kprobe on `cfg80211_rx_mgmt`
+- **Target:** Per-link key generations of the 802.11be key hierarchy
+- **Technique:** Crosses keys between links or replays stale generations — each link must refuse keys belonging to another link or older set
+
+#### F175: 6 GHz AFC Impersonation
+- **Hook:** TC classifier on WLAN interface
+- **Target:** 6 GHz standard-power AP claims
+- **Technique:** Impersonates an AFC-approved AP to bypass the power constraints 6 GHz clients trust
+
+#### F176: OFDMA Resource Unit Selective Jamming
+- **Hook:** XDP on WLAN interface
+- **Target:** HE/EHT MU PPDUs
+- **Technique:** Punctures specific resource units to deny service to individual stations inside an OFDMA allocation
+
+#### F177: 802.11bf Sensing Privacy Exploit
+- **Hook:** kprobe on `cfg80211_rx_mgmt`
+- **Target:** WLAN sensing measurement polls
+- **Technique:** Drives fast sensing polls to track presence and motion through walls (device-free passive surveillance)
+
+#### F178: Wi-Fi HaLow Sub-GHz Exploit
+- **Hook:** XDP on WPAN interface
+- **Target:** 802.11ah S1G beacons (900 MHz long-range Wi-Fi)
+- **Technique:** Targets sub-GHz smart metering / industrial IoT deployments with S1G beacon manipulation
+
+#### F179: Wi-Fi 8 Multi-AP Coordination Rogue
+- **Hook:** TC classifier on WLAN interface
+- **Target:** 802.11bn MAPC coordination elements (Co-BF/Co-SR/Co-TDMA)
+- **Technique:** Injects rogue coordination elements into a multi-AP set — the Wi-Fi 8 Ultra High Reliability attack surface
+
+### Satellite Direct-to-Cell & PNT (F180–F184)
+
+#### F180: Direct-to-Cell Spoofed Satellite Cell
+- **Hook:** TC classifier on satellite interface
+- **Target:** SCS/NTN satellite indicators (SIB19) on D2C networks
+- **Technique:** Impersonates a satellite cell (Starlink D2C/T-Mobile, AST SpaceMobile, Skylo) to harvest registrations — the satellite IMSI catcher
+
+#### F181: NTN Regenerative gNB Injection
+- **Hook:** TC classifier (SCTP:38412)
+- **Target:** Release 19 regenerative feeder link (gNB on board)
+- **Technique:** Injects NGAP signaling through the satellite-borne gNB's feeder link
+
+#### F182: LEO PNT Signal Spoofing
+- **Hook:** XDP on SDR interface
+- **Target:** Xona Pulsar-class LEO positioning signals
+- **Technique:** Forges LEO PNT beams — narrow, high-doppler, and unauthenticated
+
+#### F183: Galileo OSNMA Authentication Bypass Probe
+- **Hook:** kprobe on `sdr_rx_callback`
+- **Target:** Galileo I/NAV OSNMA fields (NMA header, Mack, TESLA key)
+- **Technique:** Injects forged I/NAV words with absent or inconsistent OSNMA tesla chains, probing receivers that skip verification
+
+#### F184: NB-NTN Store-and-Forward Abuse
+- **Hook:** TC classifier on satellite interface
+- **Target:** Release 19 store-and-forward satellite IoT queueing
+- **Technique:** Replays or delay-injects NB-IoT uplink reports through the store-and-forward path
+
+### UWB / Secure Ranging / Bluetooth 6.0 (F185–F188)
+
+#### F185: UWB 802.15.4z Ranging Manipulation
+- **Hook:** kprobe on `sdr_rx_callback`
+- **Target:** Scrambled timestamp sequence (STS) of HRP UWB ranging
+- **Technique:** Clock-desynchronization (Mix-Down class) attack that shrinks measured time-of-flight — defeats digital car key distance bounding
+
+#### F186: UWB Digital Key Relay Probe
+- **Hook:** XDP on SDR interface
+- **Target:** CCC Digital Key 3.0 ranging exchanges
+- **Technique:** Relays UWB ranging between car and phone while preserving STS validity
+
+#### F187: BT 6.0 Channel Sounding Spoof
+- **Hook:** kprobe on `hci_send_frame`
+- **Target:** Bluetooth 6.0 phase-based ranging tones
+- **Technique:** Distorts PBR tones so channel sounding computes a shorter distance than physical
+
+#### F188: Auracast Broadcast Key Abuse
+- **Hook:** kprobe on `hci_send_frame`
+- **Target:** LE Audio Auracast broadcast isochronous streams
+- **Technique:** Harvests or forges broadcast codes to prepare mass eavesdropping
+
+### Matter / Ambient IoT / Critical Infrastructure (F189–F194)
+
+#### F189: Matter Onboarding Passcode Attack
+- **Hook:** kprobe on `tcp_sendmsg`
+- **Target:** SPAKE2+ PASE commissioning sessions
+- **Technique:** Brute-forces low-entropy setup passcodes (weak PBKDF2 parameters and static salts widen the window)
+
+#### F190: Matter ACL Manipulation
+- **Hook:** TC classifier
+- **Target:** Access control list updates
+- **Technique:** Exploits non-atomic ACL updates (CVE-2024-56317 class) to grant persistent access from temporary privileges
+
+#### F191: Ambient IoT Device Cloning
+- **Hook:** TC classifier
+- **Target:** Release 19 batteryless class-A backscatter devices
+- **Technique:** Clones ambient IoT identities to inject forged sensor reports
+
+#### F192: DECT-2020 NR Mesh Injection
+- **Hook:** XDP on WPAN interface
+- **Target:** 1.9 GHz DECT-2020 NR massive mesh
+- **Technique:** Injects mesh signaling ahead of the ETSI security framework fully landing
+
+#### F193: FRMCS Railway Signaling Injection
+- **Hook:** TC classifier (SCTP:38422)
+- **Target:** Future Railway Mobile Communication System (5G GSM-R successor)
+- **Technique:** Injects train control and signaling messages
+
+#### F194: LDACS Aviation Datalink Injection
+- **Hook:** TC classifier on fronthaul interface
+- **Target:** L-band Digital Aeronautical Communications System
+- **Technique:** Injects ATC/OPS datalink frames planned to succeed VHF mode 2
+
+### 6G Horizon (F195–F200)
+
+#### F195: AI-Native Air Interface Adversarial Perturbation
+- **Hook:** XDP on SDR interface
+- **Target:** 6G AI/ML learned receivers and inference APIs
+- **Technique:** Crafts adversarial perturbations against learned receivers — inference confusion and model inversion
+
+#### F196: RIS Reflection Manipulation
+- **Hook:** kprobe on `tcp_sendmsg`
+- **Target:** Reconfigurable intelligent surface phase-shift control
+- **Technique:** Hijacks reflection control to steer energy away from legitimate receivers — physical-layer MitM
+
+#### F197: THz Beam Blockage Attack
+- **Hook:** XDP on SDR interface
+- **Target:** THz narrow-beam codebooks and beam training
+- **Technique:** Selectively blocks beams to force beam-training exhaustion and denial of ultra-massive connectivity
+
+#### F198: PQC Handshake Downgrade
+- **Hook:** kprobe on `tcp_sendmsg`
+- **Target:** Quantum-safe (ML-KEM/Dilithium class) handshakes
+- **Technique:** Forces fallback to classic crypto — the harvest-now-decrypt-later enabler against long-lived telecom keys
+
+#### F199: Network-of-Networks Credential Abuse
+- **Hook:** TC classifier on SBI interface
+- **Target:** 6G integrated non-3GPP trust fabric (satellite/WLAN/private)
+- **Technique:** Crosses credentials between member networks of the expanded trust fabric
+
+#### F200: ISAC Sensing Abuse
+- **Hook:** TC classifier
+- **Target:** Integrated sensing and communication requests
+- **Technique:** Abuses cellular radar as a subscriber tracking side channel
+
 ---
 
-## Defense Capabilities (Modules 16–55)
+## Defense Capabilities (Modules 16–70)
 
 ### Basic Telecom Detection (Modules 16–23)
 
@@ -949,6 +1165,89 @@ docker-compose -f lab/osmocom.yml up -d
 - **Alert:** `ALERT_AIS_INTEGRITY`
 - **Correlation:** Combined with ALERT_GNSS_SPOOFING feeds `AisSpoofing` pattern (confidence 0.94, severity 5)
 
+### Next-Generation Wireless Defense (Modules 56–70)
+
+#### Module 56: Wi-Fi 6/7 MLO Integrity Monitor
+- **Method:** Per-MLD, per-link key-generation and sequence tracking
+- **Indicators:** Key generation older than MLD-wide maximum (cross-link/stale key), link sequence regression, AKM suite inconsistency across links
+- **Alert:** `ALERT_MLO_INTEGRITY`
+- **Correlation:** Combined with ALERT_WPA3_INTEGRITY feeds the MLO evil-twin pattern (confidence 0.93, severity 4)
+
+#### Module 57: UWB/BT CS Secure Ranging Anomaly
+- **Method:** Ranging session consistency across UWB 802.15.4z and BT 6.0 channel sounding
+- **Indicators:** STS length/auth failures, measured distance inconsistent with prior exchanges, PBR tone anomalies
+- **Alert:** `ALERT_SECURE_RANGING`
+- **Correlation:** Combined with ALERT_RKE_JAMMING feeds `SecureRangingSpoofing` (confidence 0.91, severity 4)
+
+#### Module 58: Matter Commissioning Anomaly
+- **Method:** PASE/CASE commissioning and ACL write monitoring
+- **Indicators:** Passcode attempt bursts beyond commissioning budget, ACL version regression (non-atomic update), pre-auth protocol patterns
+- **Alert:** `ALERT_MATTER_COMMISSIONING`
+- **Correlation:** Combined with Ambient IoT/DECT anomalies feeds `SmartHomeCompromise` (confidence 0.88, severity 4)
+
+#### Module 59: Ambient IoT Device Identity Anomaly
+- **Method:** Identity/power consistency of batteryless device reports
+- **Indicators:** Same device ID at divergent power levels (clone transmitter), impossible report rates for energy-harvesting classes
+- **Alert:** `ALERT_AMBIENT_IOT`
+
+#### Module 60: DECT-2020 NR Mesh Integrity
+- **Method:** Mesh join and cluster parameter monitoring
+- **Indicators:** Rogue relay joins, cluster size/config changes, frames outside the security framework
+- **Alert:** `ALERT_DECT2020_INTEGRITY`
+
+#### Module 61: D2C Satellite Cell Verification
+- **Method:** Physics consistency of satellite-indicated cells (see the `d2c-monitor` tool for the reference implementation)
+- **Indicators:** Terrestrial timing advance on a satellite cell, missing SIB19 ephemeris, terrestrial-grade doppler, impossible RSRP, dual terrestrial presence
+- **Alert:** `ALERT_D2C_CELL_SPOOF`
+- **Correlation:** Combined with ALERT_GNSS_AUTH_FAILURE feeds `D2cCellSpoofing` (0.92/5); with ALERT_IMSI_CATCHER feeds the satellite-grade IMSI catching pattern (0.95/5)
+
+#### Module 62: GNSS Authentication Monitor (OSNMA)
+- **Method:** Galileo OSNMA verdict ingestion (see the `osnma-verify` tool)
+- **Indicators:** TESLA key chain failures, MAC verification failures, NMA status "don't use"
+- **Alert:** `ALERT_GNSS_AUTH_FAILURE`
+- **Correlation:** Combined with ALERT_LEO_PNT feeds next-generation `GnssSpoofing` (confidence 0.93, severity 5)
+
+#### Module 63: NTN Regenerative Payload Anomaly
+- **Method:** Feeder-link NGAP consistency for Release 19 gNB-on-board
+- **Indicators:** NGAP from unregistered satellite gNBs, ephemeris/timing-advance mismatch
+- **Alert:** `ALERT_NTN_REGEN_ANOMALY`
+
+#### Module 64: Wi-Fi Sensing Privacy Guard (802.11bf)
+- **Method:** Sensing measurement request monitoring
+- **Indicators:** Sensing poll floods, unsolicited measurement requests, fast poll cadence consistent with tracking
+- **Alert:** `ALERT_WIFI_SENSING`
+
+#### Module 65: FRMCS/LDACS Transport Signaling Integrity
+- **Method:** Railway and aeronautical datalink source validation
+- **Indicators:** Signaling from unauthorized train/aircraft identities, procedure code violations
+- **Alert:** `ALERT_FRMCS_LDACS`
+
+#### Module 66: AI-RAN Model Integrity Monitor
+- **Method:** Model version/integrity and inference pattern tracking
+- **Indicators:** Model hash changes, perturbation budgets exceeded, adversarial inference patterns
+- **Alert:** `ALERT_AI_RAN_INTEGRITY`
+- **Correlation:** Combined with ALERT_PQC_DOWNGRADE feeds `AiRanCompromise` (confidence 0.90, severity 5)
+
+#### Module 67: PQC Handshake Downgrade Detection
+- **Method:** Quantum-safe handshake transition monitoring
+- **Indicators:** ML-KEM → classic fallback, suite inconsistency between peers
+- **Alert:** `ALERT_PQC_DOWNGRADE`
+
+#### Module 68: LEO PNT Signal Authentication
+- **Method:** LEO PNT beam physics and authentication status
+- **Indicators:** C/N0 above physical ceiling, doppler slope anomalies, unauthenticated beams
+- **Alert:** `ALERT_LEO_PNT`
+
+#### Module 69: Wi-Fi 8 MAPC / HaLow Integrity
+- **Method:** Multi-AP coordination set and S1G beacon monitoring
+- **Indicators:** Rogue members joining coordination sets, S1G beacon anomalies on sub-GHz Wi-Fi
+- **Alert:** `ALERT_MAPC_INTEGRITY`
+
+#### Module 70: Network-of-Networks Credential Monitor
+- **Method:** Cross-network credential use tracking in the 6G trust fabric
+- **Indicators:** Credential reuse across non-3GPP member networks, source network mismatch
+- **Alert:** `ALERT_NON_CREDENTIAL_ABUSE`
+
 ---
 
 ## Correlation Engine
@@ -985,6 +1284,11 @@ The `TelecomCorrelationEngine` performs cross-layer protocol correlation to iden
 | `AlertSpoofing` | Emergency alert fabrication | EAS header + broadcast injection |
 | `FronthaulCompromise` | O-RAN data path attack | Fronthaul integrity + RIC compromise |
 | `AisSpoofing` | Maritime AIS falsification | AIS integrity + GNSS spoofing |
+| `SecureRangingSpoofing` | UWB/BT CS ranging attack | Secure ranging anomaly + RKE jamming |
+| `D2cCellSpoofing` | Spoofed satellite cell | D2C cell verification + GNSS auth failure or IMSI catcher |
+| `SmartHomeCompromise` | Matter/IoT home takeover | Matter commissioning + Ambient IoT/DECT anomaly |
+| `AiRanCompromise` | 6G control plane attack | AI-RAN integrity + PQC downgrade |
+| `PqcDowngrade` | Harvest-now-decrypt-later collection | Repeated PQC handshake downgrades |
 
 ### Correlation Layers
 

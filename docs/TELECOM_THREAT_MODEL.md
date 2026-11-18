@@ -428,6 +428,58 @@ This document maps the attack surfaces, threat actors, and attack paths across c
 
 ---
 
+## Next-Generation Attack Surfaces
+
+### Wi-Fi 6/6E/7/8 (F173–F179)
+
+Wi-Fi 7 (802.11be) Multi-Link Operation is deployed in consumer hardware, and key-confusion attacks against the MLO key hierarchy were demonstrated in the lab in 2025 — the standard mandates that every link refuse keys belonging to another link or an older set of links, which is exactly the invariant attackers break. On 6 GHz, standard-power operation depends on Automated Frequency Coordination (AFC), so an impersonated AFC lets a rogue AP bypass power constraints that clients trust. IEEE 802.11bf WLAN Sensing (finalized 2024) turns Wi-Fi into a through-wall presence radar for passive tracking, while Wi-Fi 8 multi-AP coordination and sub-GHz HaLow (802.11ah) extend the rogue-infrastructure surface.
+
+**StaticZero Coverage:**
+- Offense: F173 (MLO link desync), F174 (MLO key separation abuse), F175 (6 GHz AFC impersonation), F176 (OFDMA RU selective jamming), F177 (802.11bf sensing privacy), F178 (HaLow), F179 (Wi-Fi 8 MAPC rogue)
+- Defense: M56 (MLO integrity), M64 (Wi-Fi sensing privacy guard), M69 (MAPC/HaLow integrity)
+
+---
+
+### Satellite Direct-to-Cell & PNT (F180–F184)
+
+Direct-to-Cell puts LTE eNodeBs in orbit (Starlink/T-Mobile live; AST SpaceMobile, Skylo NB-NTN), and because Android now exposes satellite network identities, a spoofed "satellite" cell is the direct-to-device successor of the IMSI catcher. LEO PNT constellations (Xona Pulsar-class) broadcast narrow-beam commercial positioning signals with no authentication — a new spoofable signal class. Galileo OSNMA has been operational since July 2025, making cryptographic spoofing detection possible for open-service users and a target for bypass probes. 3GPP Release 19 adds regenerative payloads (gNB on board) and store-and-forward NB-NTN, moving core-adjacent attack surfaces into orbit.
+
+**StaticZero Coverage:**
+- Offense: F180 (D2C spoofed satellite cell), F181 (NTN regenerative gNB injection), F182 (LEO PNT spoofing), F183 (Galileo OSNMA bypass probe), F184 (NB-NTN store-and-forward abuse)
+- Defense: M61 (D2C cell verification), M62 (GNSS authentication monitor), M63 (NTN regenerative anomaly), M68 (LEO PNT authentication)
+
+---
+
+### UWB / Bluetooth 6.0 Secure Ranging (F185–F188)
+
+IEEE 802.15.4z secure ranging underpins CCC Digital Key 3.0 vehicle keys and item finders, but Mix-Down distance-reduction attacks on commercial 4z chips (STS clock desync) have been demonstrated, defeating proximity-based authorization. Bluetooth 6.0 (2024) Channel Sounding combines phase-based ranging with round-trip time as a relay countermeasure, making the ranging channel itself the new target. Auracast LE Audio broadcast key handling is the mass-eavesdropping surface, with specification issues published in 2025.
+
+**StaticZero Coverage:**
+- Offense: F185 (UWB 802.15.4z ranging manipulation), F186 (UWB digital key relay), F187 (BT 6.0 channel sounding spoof), F188 (Auracast broadcast key abuse)
+- Defense: M57 (secure ranging anomaly)
+
+---
+
+### Matter / Ambient IoT / Critical Infrastructure (F189–F194)
+
+Matter onboarding runs SPAKE2+ over low-entropy setup passcodes with weakened PBKDF2 and static per-device salts (IACR ePrint 2025/1268), and CVE-2024-56317-class non-atomic ACL updates turn temporary privileges into persistent surveillance access. Release 19 Ambient IoT (TS 33.369, published October 2025) introduces batteryless ~1 µW devices whose security spec just landed — device cloning and backscatter identity spoofing are the obvious first attacks. DECT-2020 NR massive mesh, the FRMCS 5G-based railway signaling successor to GSM-R, and the LDACS L-band aeronautical datalink all carry safety-critical traffic while their security frameworks are still under construction.
+
+**StaticZero Coverage:**
+- Offense: F189 (Matter passcode attack), F190 (Matter ACL manipulation), F191 (Ambient IoT device cloning), F192 (DECT-2020 NR mesh injection), F193 (FRMCS railway signaling injection), F194 (LDACS aviation datalink injection)
+- Defense: M58 (Matter commissioning anomaly), M59 (Ambient IoT identity anomaly), M60 (DECT-2020 mesh integrity), M65 (FRMCS/LDACS integrity)
+
+---
+
+### 6G Horizon (F195–F200)
+
+3GPP Release 20 (commercialization ~2028–2030) designs an AI-native air interface, making adversarial perturbation of learned receivers and model poisoning of AI-RAN the new RAN attack surface. Reconfigurable Intelligent Surfaces make reflection control a physical-layer MitM with no standard defense yet, and THz narrow beams make codebook and beam-training exhaustion a denial vector. Downgrading quantum-safe handshakes against long-lived telecom keys is the harvest-now-decrypt-later enabler, while the network-of-networks trust fabric and ISAC cellular radar expand credential abuse and tracking surfaces.
+
+**StaticZero Coverage:**
+- Offense: F195 (AI-RAN adversarial perturbation), F196 (RIS reflection manipulation), F197 (THz beam blockage), F198 (PQC handshake downgrade), F199 (network-of-networks credential abuse), F200 (ISAC sensing abuse)
+- Defense: M66 (AI-RAN model integrity), M67 (PQC downgrade detection), M70 (network-of-networks credential monitor)
+
+---
+
 ## Cross-Generation Attack Patterns
 
 ### Protocol Downgrade Chain
@@ -469,34 +521,45 @@ The correlation engine detects multi-layer attack sequences:
 | Maritime Multi-Vector | Maritime→Satellite | AIS spoofing + GPS spoofing + VSAT integrity failure | Navigation attack |
 | UAV Takeover Chain | RF Control | MAVLink injection + DroneID spoof + FPV intercept | Full UAV compromise |
 | Emergency Alert Fabrication | Broadcast→Core | EAS header + WEA SIB12 + broadcast injection | Mass panic/disruption |
+| D2C Cell Spoof | Satellite→NAS | Satellite-indicated cell with terrestrial TA/doppler + IMSI catcher correlation (M61+M18) | D2cCellSpoofing |
+| LEO PNT + OSNMA Failure | Satellite | LEO PNT physics anomaly with Galileo OSNMA authentication failure (M68+M62) | GnssSpoofing |
+| Smart Home Takeover | Radio | Matter commissioning abuse + Ambient IoT/DECT-2020 anomaly (M58+M59/M60) | SmartHomeCompromise |
+| Wi-Fi 7 MLO Evil Twin | Radio | MLO integrity failure + WPA3 integrity failure (M56+M47) | WifiRogueAp |
+| 6G Control Plane Compromise | Core→NAS | AI-RAN model tampering + PQC handshake downgrade (M66+M67) | AiRanCompromise |
+| Vehicle Key Theft Chain | Radio | Secure ranging manipulation + RKE jamming (M57+M48) | SecureRangingSpoofing |
+| Harvest-Now-Decrypt-Later | NAS | Repeated PQC handshake downgrades (M67) | PqcDowngrade |
 
 ---
 
 ## MITRE ATT&CK Mapping (Mobile)
 
-| Technique ID | Name | Aegis Features |
+| Technique ID | Name | StaticZero Features |
 |-------------|------|----------------|
 | T1430 | Location Tracking | F92, F95, F107, M19, M22 |
 | T1617 | Cellular Interception | F89-F92, F101, M21, M24 |
 | T1600.001 | Downgrade System Image | F93, M20 |
 | T1587.001 | Develop Capabilities: Malware | F90 (baseband) |
 | T1583.003 | Acquire Infrastructure: VPS | F95, F96 (SS7/Diameter proxy) |
-| T1557 | Adversary-in-the-Middle | F94, F97, F101, F104, F106 |
+| T1557 | Adversary-in-the-Middle | F94, F97, F101, F104, F106, F173, F174, F180, F185 |
 | T1499 | Endpoint Denial of Service | F103 (slice DoS) |
 | T1565 | Data Manipulation | F96, F100, F108 |
-| T1498 | Network Denial of Service | F151, F165, F172, M46, M52, M55 |
+| T1498 | Network Denial of Service | F151, F165, F172, F176, F197, M46, M52, M55 |
 | T1205 | Traffic Signaling | F156, F157, M48 |
 | T1595.002 | Active Scanning: Vulnerability Scanning | F139, F143, F146, M42, M43, M44 |
 | T1071.001 | Application Layer Protocol: Web | F167, F169, M53, M54 |
 | T1542 | Pre-OS Boot | F140, F144, M42, M43 |
-| T1040 | Network Sniffing | F135, F137, F155, F161, M40, M41 |
+| T1040 | Network Sniffing | F135, F137, F155, F161, F177, F188, F191, M40, M41 |
 | T1531 | Account Access Removal | F136, F152, M40, M47 |
+| T1110.001 | Brute Force: Password Guessing | F189 (Matter passcode), M58 |
+| T1562.001 | Impair Defenses | F183 (OSNMA bypass), F198 (PQC downgrade), M62, M67 |
+| T1565.001 | Data Manipulation: Stored Data | F195 (AI-RAN), F196 (RIS), M66 |
+| T1078 | Valid Accounts | F199 (network-of-networks credentials), M70 |
 
 ---
 
 ## Risk Matrix
 
-| Attack | Likelihood | Impact | Detection Difficulty | Aegis Detection |
+| Attack | Likelihood | Impact | Detection Difficulty | StaticZero Detection |
 |--------|-----------|--------|---------------------|-----------------|
 | IMSI catching (2G) | High | Medium | Low | M21 (high confidence) |
 | SS7 location tracking | High | High | Medium | M24 + correlation |
@@ -519,6 +582,12 @@ The correlation engine detects multi-layer attack sequences:
 | EAS/WEA alert spoofing | Low | Critical | High | M52 (header validation) |
 | O-RAN fronthaul MitM | Low | Critical | Very High | M53 + M54 (correlation) |
 | AIS position spoofing | Medium | High | Medium | M55 (physics validation) |
+| Wi-Fi 7 MLO desync | Medium | High | Medium | M56 (MLO integrity monitor) |
+| D2C satellite cell spoofing | Low | Critical | Very High | M61 + correlation engine |
+| Galileo OSNMA bypass | Low | Critical | Very High | M62 (OSNMA verification) |
+| Matter passcode attack | High | High | Low | M58 (commissioning anomaly) |
+| PQC handshake downgrade | Medium | Critical | High | M67 (PQC downgrade detection) |
+| AI-RAN model tampering | Low | Critical | Very High | M66 + correlation engine |
 
 ---
 
@@ -576,3 +645,30 @@ The correlation engine detects multi-layer attack sequences:
 - Flag position reports violating physics constraints (Module 55)
 - Implement multi-source verification for CPA/TCPA alerts
 - Deploy AIS receiver authentication where mandated
+
+### Next-Generation Wi-Fi (6/7/8)
+- Monitor MLO key hierarchy consistency and per-link sequence numbers (Module 56)
+- Validate AFC standard-power claims on 6 GHz; reject APs claiming power without coordination
+- Disable or policy-limit 802.11bf sensing in privacy-sensitive environments
+- Watch MAPC coordination set membership for rogue APs (Module 69)
+
+### Satellite D2C & PNT
+- Cross-validate satellite-indicated cells against physics: timing advance, doppler, ephemeris (Module 61, `d2c-monitor` tool)
+- Enforce Galileo OSNMA verification for all positioning (Module 62, `osnma-verify` tool)
+- Authenticate LEO PNT signals; flag C/N0 ceiling and doppler slope anomalies (Module 68)
+
+### UWB / Bluetooth 6.0
+- Enforce 802.15.4z STS on all ranging sessions
+- Monitor ranging consistency for Mix-Down class distance-reduction attacks (Module 57)
+- Prefer UWB distance bounding over BLE-only digital keys
+
+### Smart-Home & Critical IoT
+- Rate-limit Matter commissioning attempts and enforce ACL version monotonicity (Module 58)
+- Monitor Ambient IoT identity and power consistency for clones (Module 59)
+- Validate DECT-2020 NR mesh joins (Module 60)
+- Source-validate FRMCS/LDACS signaling (Module 65)
+
+### 6G Horizon
+- Sign and verify AI-RAN models before deployment (Module 66)
+- Mandate hybrid PQC with no silent downgrade to classic key exchange (Module 67)
+- Bind credentials to member networks in the network-of-networks trust fabric (Module 70)

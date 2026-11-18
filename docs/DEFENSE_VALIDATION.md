@@ -8,7 +8,7 @@ registry in `defense/src/probes.rs` is the source of truth for attachment suppor
 | Modules | Runtime status |
 | --- | --- |
 | 22 | Experimental passive adapter for `syscalls/sys_enter_openat` |
-| 16–21, 23–55 | Unsupported for live attachment: expect decoded protocol values, with no validated kernel/userspace adapter yet |
+| 16–21, 23–70 | Unsupported for live attachment: expect decoded protocol values, with no validated kernel/userspace adapter yet |
 
 Unsupported probe logic remains in the eBPF object for research, and userspace
 correlation rules remain testable. The loader never guesses a kernel symbol by

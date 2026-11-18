@@ -785,6 +785,311 @@ fn parse_xnap_ies(mut data: &[u8]) -> (Option<u32>, Option<u32>, Vec<XnApIe>) {
     (source_id, target_id, ies)
 }
 
+// ── E2AP (O-RAN RIC E2 Interface — O-RAN.WG3.E2AP) ───────────────────────────
+
+pub const E2AP_PORT: u16 = 36421; // SCTP port for E2 between near-RT RIC and eNB/gNB
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct E2ApMessage {
+    pub procedure_code: E2ApProcedureCode,
+    pub message_class: E2ApMessageClass,
+    pub request_id: Option<u16>,
+    pub ran_function_id: Option<u16>,
+    pub ies: Vec<E2ApIe>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum E2ApProcedureCode {
+    RicSubscriptionRequest,
+    RicSubscriptionDelete,
+    RicServiceUpdate,
+    RicControl,
+    RicIndication,
+    E2Setup,
+    E2Reset,
+    Unknown(u8),
+}
+
+impl From<u8> for E2ApProcedureCode {
+    fn from(val: u8) -> Self {
+        match val {
+            6 => Self::RicSubscriptionRequest,
+            7 => Self::RicSubscriptionDelete,
+            9 => Self::RicServiceUpdate,
+            10 => Self::RicControl,
+            11 => Self::RicIndication,
+            17 => Self::E2Setup,
+            18 => Self::E2Reset,
+            other => Self::Unknown(other),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum E2ApMessageClass {
+    InitiatingMessage,
+    SuccessfulOutcome,
+    UnsuccessfulOutcome,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum E2ApIe {
+    RicRequestId { request_id: u16, instance_id: u16 },
+    RanFunctionId(u16),
+    RicActionId(u16),
+    RicIndicationType(u8),
+    E2NodeComponentConfig(Vec<u8>),
+    Unknown { id: u16, data: Vec<u8> },
+}
+
+pub fn parse_e2ap(data: &[u8]) -> Option<E2ApMessage> {
+    // E2AP runs over SCTP — assume SCTP payload extracted.
+    // ASN.1 PER outer wrapper: message class, procedure code, criticality.
+    if data.len() < 4 {
+        return None;
+    }
+
+    let message_class = match data[0] & 0x60 {
+        0x00 => E2ApMessageClass::InitiatingMessage,
+        0x20 => E2ApMessageClass::SuccessfulOutcome,
+        0x40 => E2ApMessageClass::UnsuccessfulOutcome,
+        _ => return None,
+    };
+
+    let procedure_code = E2ApProcedureCode::from(data[1]);
+    let (request_id, ran_function_id, ies) = parse_e2ap_ies(&data[4..]);
+
+    Some(E2ApMessage {
+        procedure_code,
+        message_class,
+        request_id,
+        ran_function_id,
+        ies,
+    })
+}
+
+fn parse_e2ap_ies(mut data: &[u8]) -> (Option<u16>, Option<u16>, Vec<E2ApIe>) {
+    let mut request_id = None;
+    let mut ran_function_id = None;
+    let mut ies = Vec::new();
+
+    while data.len() >= 4 {
+        let ie_id = u16::from_be_bytes([data[0], data[1]]);
+        let ie_len = u16::from_be_bytes([data[2], data[3]]) as usize;
+
+        if data.len() < 4 + ie_len {
+            break;
+        }
+
+        let ie_data = &data[4..4 + ie_len];
+        let ie = match ie_id {
+            9 => {
+                if ie_data.len() >= 4 {
+                    let id = u16::from_be_bytes([ie_data[0], ie_data[1]]);
+                    let inst = u16::from_be_bytes([ie_data[2], ie_data[3]]);
+                    request_id = Some(id);
+                    E2ApIe::RicRequestId {
+                        request_id: id,
+                        instance_id: inst,
+                    }
+                } else {
+                    E2ApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
+                }
+            }
+            10 => {
+                if ie_data.len() >= 2 {
+                    let id = u16::from_be_bytes([ie_data[0], ie_data[1]]);
+                    ran_function_id = Some(id);
+                    E2ApIe::RanFunctionId(id)
+                } else {
+                    E2ApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
+                }
+            }
+            11 => E2ApIe::RicActionId(u16::from_be_bytes([
+                ie_data.first().copied().unwrap_or(0),
+                ie_data.get(1).copied().unwrap_or(0),
+            ])),
+            35 => E2ApIe::RicIndicationType(ie_data.first().copied().unwrap_or(0)),
+            36 => E2ApIe::E2NodeComponentConfig(ie_data.to_vec()),
+            _ => E2ApIe::Unknown {
+                id: ie_id,
+                data: ie_data.to_vec(),
+            },
+        };
+
+        ies.push(ie);
+        data = &data[4 + ie_len..];
+    }
+
+    (request_id, ran_function_id, ies)
+}
+
+// ── F1AP (F1 Interface — 3GPP TS 38.470/38.473, CU↔DU split) ─────────────────
+
+pub const F1AP_PORT: u16 = 38472; // SCTP port for F1-C between gNB-CU and gNB-DU
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct F1ApMessage {
+    pub procedure_code: F1ApProcedureCode,
+    pub message_class: F1ApMessageClass,
+    pub gnb_cu_ue_f1ap_id: Option<u32>,
+    pub gnb_du_ue_f1ap_id: Option<u32>,
+    pub ies: Vec<F1ApIe>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum F1ApProcedureCode {
+    F1SetupRequest,
+    InitialULRrcMessageTransfer,
+    DLRrcMessageTransfer,
+    UeContextSetup,
+    UeContextRelease,
+    UeContextModification,
+    UECapabilityInfoIndication,
+    RrcDeliveryReport,
+    Unknown(u8),
+}
+
+impl From<u8> for F1ApProcedureCode {
+    fn from(val: u8) -> Self {
+        match val {
+            0 => Self::F1SetupRequest,
+            15 => Self::InitialULRrcMessageTransfer,
+            16 => Self::DLRrcMessageTransfer,
+            26 => Self::UeContextSetup,
+            27 => Self::UeContextRelease,
+            28 => Self::UeContextModification,
+            31 => Self::UECapabilityInfoIndication,
+            39 => Self::RrcDeliveryReport,
+            other => Self::Unknown(other),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum F1ApMessageClass {
+    InitiatingMessage,
+    SuccessfulOutcome,
+    UnsuccessfulOutcome,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum F1ApIe {
+    GnbCuUeF1ApId(u32),
+    GnbDuUeF1ApId(u32),
+    NasPdu(Vec<u8>),
+    Cause { group: u8, value: u8 },
+    ServingCellId(u64),
+    Unknown { id: u16, data: Vec<u8> },
+}
+
+pub fn parse_f1ap(data: &[u8]) -> Option<F1ApMessage> {
+    // F1AP runs over SCTP — assume SCTP payload extracted.
+    if data.len() < 4 {
+        return None;
+    }
+
+    let message_class = match data[0] & 0x60 {
+        0x00 => F1ApMessageClass::InitiatingMessage,
+        0x20 => F1ApMessageClass::SuccessfulOutcome,
+        0x40 => F1ApMessageClass::UnsuccessfulOutcome,
+        _ => return None,
+    };
+
+    let procedure_code = F1ApProcedureCode::from(data[1]);
+    let (cu_id, du_id, ies) = parse_f1ap_ies(&data[4..]);
+
+    Some(F1ApMessage {
+        procedure_code,
+        message_class,
+        gnb_cu_ue_f1ap_id: cu_id,
+        gnb_du_ue_f1ap_id: du_id,
+        ies,
+    })
+}
+
+fn parse_f1ap_ies(mut data: &[u8]) -> (Option<u32>, Option<u32>, Vec<F1ApIe>) {
+    let mut cu_id = None;
+    let mut du_id = None;
+    let mut ies = Vec::new();
+
+    while data.len() >= 4 {
+        let ie_id = u16::from_be_bytes([data[0], data[1]]);
+        let ie_len = u16::from_be_bytes([data[2], data[3]]) as usize;
+
+        if data.len() < 4 + ie_len {
+            break;
+        }
+
+        let ie_data = &data[4..4 + ie_len];
+        let ie = match ie_id {
+            5 => {
+                if ie_data.len() >= 4 {
+                    let id = u32::from_be_bytes([ie_data[0], ie_data[1], ie_data[2], ie_data[3]]);
+                    cu_id = Some(id);
+                    F1ApIe::GnbCuUeF1ApId(id)
+                } else {
+                    F1ApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
+                }
+            }
+            6 => {
+                if ie_data.len() >= 4 {
+                    let id = u32::from_be_bytes([ie_data[0], ie_data[1], ie_data[2], ie_data[3]]);
+                    du_id = Some(id);
+                    F1ApIe::GnbDuUeF1ApId(id)
+                } else {
+                    F1ApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
+                }
+            }
+            38 => F1ApIe::NasPdu(ie_data.to_vec()),
+            7 => {
+                if ie_data.len() >= 2 {
+                    F1ApIe::Cause {
+                        group: ie_data[0],
+                        value: ie_data[1],
+                    }
+                } else {
+                    F1ApIe::Unknown {
+                        id: ie_id,
+                        data: ie_data.to_vec(),
+                    }
+                }
+            }
+            9 => F1ApIe::ServingCellId(u64::from_be_bytes([
+                ie_data.first().copied().unwrap_or(0),
+                ie_data.get(1).copied().unwrap_or(0),
+                ie_data.get(2).copied().unwrap_or(0),
+                ie_data.get(3).copied().unwrap_or(0),
+                ie_data.get(4).copied().unwrap_or(0),
+                ie_data.get(5).copied().unwrap_or(0),
+                ie_data.get(6).copied().unwrap_or(0),
+                ie_data.get(7).copied().unwrap_or(0),
+            ])),
+            _ => F1ApIe::Unknown {
+                id: ie_id,
+                data: ie_data.to_vec(),
+            },
+        };
+
+        ies.push(ie);
+        data = &data[4 + ie_len..];
+    }
+
+    (cu_id, du_id, ies)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -940,5 +1245,57 @@ mod tests {
     #[test]
     fn test_parse_xnap_too_short() {
         assert!(parse_xnap(&[0x00]).is_none());
+    }
+
+    #[test]
+    fn test_parse_e2ap_ric_subscription() {
+        let data: Vec<u8> = vec![
+            0x00, // InitiatingMessage
+            0x06, // procedureCode=6 (RIC Subscription Request)
+            0x00, // criticality
+            0x00, // dummy length
+            // IE: RIC Request ID (id=9, len=4)
+            0x00, 0x09, 0x00, 0x04, 0x00, 0x2A, 0x00, 0x01,
+            // IE: RAN Function ID (id=10, len=2)
+            0x00, 0x0A, 0x00, 0x02, 0x00, 0x03,
+        ];
+        let msg = parse_e2ap(&data).unwrap();
+        assert!(matches!(
+            msg.procedure_code,
+            E2ApProcedureCode::RicSubscriptionRequest
+        ));
+        assert_eq!(msg.request_id, Some(0x2A));
+        assert_eq!(msg.ran_function_id, Some(3));
+    }
+
+    #[test]
+    fn test_parse_e2ap_too_short() {
+        assert!(parse_e2ap(&[0x00]).is_none());
+    }
+
+    #[test]
+    fn test_parse_f1ap_ue_context_setup() {
+        let data: Vec<u8> = vec![
+            0x00, // InitiatingMessage
+            0x1A, // procedureCode=26 (UEContextSetup)
+            0x00, // criticality
+            0x00, // dummy length
+            // IE: gNB-CU-UE-F1AP-ID (id=5, len=4)
+            0x00, 0x05, 0x00, 0x04, 0x00, 0x00, 0x00, 0x2A,
+            // IE: gNB-DU-UE-F1AP-ID (id=6, len=4)
+            0x00, 0x06, 0x00, 0x04, 0x00, 0x00, 0x00, 0x2B,
+        ];
+        let msg = parse_f1ap(&data).unwrap();
+        assert!(matches!(
+            msg.procedure_code,
+            F1ApProcedureCode::UeContextSetup
+        ));
+        assert_eq!(msg.gnb_cu_ue_f1ap_id, Some(0x2A));
+        assert_eq!(msg.gnb_du_ue_f1ap_id, Some(0x2B));
+    }
+
+    #[test]
+    fn test_parse_f1ap_too_short() {
+        assert!(parse_f1ap(&[0x00, 0x00]).is_none());
     }
 }

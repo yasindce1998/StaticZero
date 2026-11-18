@@ -21,6 +21,18 @@ path = "src/modem_firmware.rs"
 name = "protocol-correlator"
 path = "src/protocol_correlator.rs"
 
+[[bin]]
+name = "osnma-verify"
+path = "src/osnma_verify.rs"
+
+[[bin]]
+name = "d2c-monitor"
+path = "src/d2c_monitor.rs"
+
+[[bin]]
+name = "mlo-analyzer"
+path = "src/mlo_analyzer.rs"
+
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

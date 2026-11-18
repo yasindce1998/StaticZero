@@ -16,6 +16,11 @@ pub enum ProbeGroup {
     Core,
     Satellite,
     Rf,
+    NextGenWifi,
+    D2c,
+    SecureRanging,
+    NextGenIot,
+    SixG,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,12 +211,98 @@ pub static PROBES: &[ProbeSpec] = &[
     pending!(53, "detect_oran_fronthaul", "O-RAN Fronthaul Integrity", Rf),
     pending!(54, "detect_oran_ric", "O-RAN RIC Security Monitor", Rf),
     pending!(55, "detect_ais_integrity", "AIS Signal Integrity", Rf),
+    // Next-generation wireless (Modules 56-70)
+    pending!(
+        56,
+        "detect_mlo_integrity",
+        "Wi-Fi 6/7 MLO Integrity Monitor",
+        NextGenWifi
+    ),
+    pending!(
+        57,
+        "detect_secure_ranging",
+        "UWB/BT CS Secure Ranging Anomaly",
+        SecureRanging
+    ),
+    pending!(
+        58,
+        "detect_matter_commissioning",
+        "Matter Commissioning Anomaly",
+        NextGenIot
+    ),
+    pending!(
+        59,
+        "detect_ambient_iot",
+        "Ambient IoT Device Identity Anomaly",
+        NextGenIot
+    ),
+    pending!(
+        60,
+        "detect_dect2020_integrity",
+        "DECT-2020 NR Mesh Integrity",
+        NextGenIot
+    ),
+    pending!(
+        61,
+        "detect_d2c_cell",
+        "D2C Satellite Cell Verification",
+        D2c
+    ),
+    pending!(
+        62,
+        "detect_gnss_auth",
+        "GNSS Authentication Monitor (OSNMA)",
+        D2c
+    ),
+    pending!(
+        63,
+        "detect_ntn_regen_anomaly",
+        "NTN Regenerative Payload Anomaly",
+        D2c
+    ),
+    pending!(
+        64,
+        "detect_wifi_sensing",
+        "Wi-Fi Sensing Privacy Guard (802.11bf)",
+        NextGenWifi
+    ),
+    pending!(
+        65,
+        "detect_frmcs_ldacs",
+        "FRMCS/LDACS Transport Signaling Integrity",
+        NextGenIot
+    ),
+    pending!(
+        66,
+        "detect_ai_ran_integrity",
+        "AI-RAN Model Integrity Monitor",
+        SixG
+    ),
+    pending!(
+        67,
+        "detect_pqc_downgrade",
+        "PQC Handshake Downgrade Detection",
+        SixG
+    ),
+    pending!(68, "detect_leo_pnt", "LEO PNT Signal Authentication", D2c),
+    pending!(
+        69,
+        "detect_mapc_integrity",
+        "Wi-Fi 8 MAPC / HaLow Integrity",
+        NextGenWifi
+    ),
+    pending!(
+        70,
+        "detect_non_credential",
+        "Network-of-Networks Credential Monitor",
+        SixG
+    ),
 ];
 
 pub fn select_probes(modules: &[u8], groups: &[ProbeGroup]) -> Result<Vec<&'static ProbeSpec>> {
     for module in modules {
         if !PROBES.iter().any(|probe| probe.module == *module) {
-            bail!("unknown defense module {module}; expected 16-55");
+            bail!("unknown defense module {module}; expected 16-70");
         }
     }
     Ok(PROBES
@@ -361,7 +452,7 @@ mod tests {
 
     #[test]
     fn registry_is_complete_and_unique() {
-        assert_eq!(PROBES.len(), 40);
+        assert_eq!(PROBES.len(), 55);
         for (index, spec) in PROBES.iter().enumerate() {
             assert_eq!(spec.module as usize, index + 16);
             assert_eq!(
@@ -385,6 +476,29 @@ mod tests {
         assert_eq!(selected[0].module, 46);
         assert!(select_probes(&[15], &[]).is_err());
         assert_eq!(select_probes(&[], &[ProbeGroup::Telecom]).unwrap().len(), 8);
+    }
+
+    #[test]
+    fn nextgen_groups_select_their_modules() {
+        assert_eq!(
+            select_probes(&[], &[ProbeGroup::NextGenWifi])
+                .unwrap()
+                .len(),
+            3
+        );
+        assert_eq!(select_probes(&[], &[ProbeGroup::D2c]).unwrap().len(), 4);
+        assert_eq!(
+            select_probes(&[], &[ProbeGroup::SecureRanging])
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            select_probes(&[], &[ProbeGroup::NextGenIot]).unwrap().len(),
+            4
+        );
+        assert_eq!(select_probes(&[], &[ProbeGroup::SixG]).unwrap().len(), 3);
+        assert!(select_probes(&[71], &[]).is_err());
     }
 
     #[test]

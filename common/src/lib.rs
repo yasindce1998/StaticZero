@@ -169,6 +169,47 @@ pub const EVENT_AIS_POSITION_SPOOF: u32 = 241;
 pub const EVENT_AIS_CPA_ABUSE: u32 = 242;
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Next-Generation Wireless Event Constants — Offense (Features 173-200)
+// Wi-Fi 6/6E/7/8 + sensing (F173-F179), satellite D2C/PNT (F180-F184),
+// UWB/BT 6.0 secure ranging (F185-F188), Matter/Ambient IoT/DECT-2020/
+// FRMCS/LDACS (F189-F194), 6G horizon (F195-F200)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Wi-Fi 6/6E/7/8 & WLAN Sensing (F173-F179)
+pub const EVENT_WIFI7_MLO_LINK_DESYNC: u32 = 243;
+pub const EVENT_WIFI7_MLO_KEY_ABUSE: u32 = 244;
+pub const EVENT_WIFI6_AFC_IMPERSONATION: u32 = 245;
+pub const EVENT_WIFI6_OFDMA_RU_JAM: u32 = 246;
+pub const EVENT_WIFI_SENSING_PRIVACY: u32 = 247;
+pub const EVENT_WIFI_HALOW_EXPLOIT: u32 = 248;
+pub const EVENT_WIFI8_MAPC_ROGUE: u32 = 249;
+// Satellite Direct-to-Cell & PNT (F180-F184)
+pub const EVENT_D2C_CELL_SPOOF: u32 = 250;
+pub const EVENT_NTN_REGEN_INJECT: u32 = 251;
+pub const EVENT_LEO_PNT_SPOOF: u32 = 252;
+pub const EVENT_GNSS_AUTH_BYPASS: u32 = 253;
+pub const EVENT_NBNTN_SAF_ABUSE: u32 = 254;
+// UWB / Secure Ranging / Bluetooth 6.0 (F185-F188)
+pub const EVENT_UWB_RANGING_MANIP: u32 = 255;
+pub const EVENT_UWB_KEY_RELAY: u32 = 256;
+pub const EVENT_BT_CS_SPOOF: u32 = 257;
+pub const EVENT_BT_AURACAST_ABUSE: u32 = 258;
+// Matter / Ambient IoT / DECT-2020 NR / FRMCS / LDACS (F189-F194)
+pub const EVENT_MATTER_PASSCODE_ATTACK: u32 = 259;
+pub const EVENT_MATTER_ACL_MANIP: u32 = 260;
+pub const EVENT_AMBIENT_IOT_CLONE: u32 = 261;
+pub const EVENT_DECT2020_INJECT: u32 = 262;
+pub const EVENT_FRMCS_INJECT: u32 = 263;
+pub const EVENT_LDACS_INJECT: u32 = 264;
+// 6G horizon (F195-F200)
+pub const EVENT_6G_AI_PERTURB: u32 = 265;
+pub const EVENT_6G_RIS_MANIP: u32 = 266;
+pub const EVENT_6G_THZ_BLOCKAGE: u32 = 267;
+pub const EVENT_6G_PQC_DOWNGRADE: u32 = 268;
+pub const EVENT_6G_NON_CRED_ABUSE: u32 = 269;
+pub const EVENT_6G_ISAC_ABUSE: u32 = 270;
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Telecom Defense Alert Constants
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -229,6 +270,32 @@ pub const ALERT_ORAN_FRONTHAUL: u32 = 56;
 pub const ALERT_ORAN_RIC: u32 = 57;
 // AIS Maritime Defense (Module 55)
 pub const ALERT_AIS_INTEGRITY: u32 = 58;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Next-Generation Wireless Alert Constants (Modules 56-70)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Wi-Fi 6/7/8 Defense (Modules 56, 64, 69)
+pub const ALERT_MLO_INTEGRITY: u32 = 59;
+pub const ALERT_WIFI_SENSING: u32 = 67;
+pub const ALERT_MAPC_INTEGRITY: u32 = 72;
+// Secure Ranging Defense (Module 57)
+pub const ALERT_SECURE_RANGING: u32 = 60;
+// Smart Home / IoT Defense (Modules 58-60)
+pub const ALERT_MATTER_COMMISSIONING: u32 = 61;
+pub const ALERT_AMBIENT_IOT: u32 = 62;
+pub const ALERT_DECT2020_INTEGRITY: u32 = 63;
+// Satellite D2C / PNT Defense (Modules 61-63, 68)
+pub const ALERT_D2C_CELL_SPOOF: u32 = 64;
+pub const ALERT_GNSS_AUTH_FAILURE: u32 = 65;
+pub const ALERT_NTN_REGEN_ANOMALY: u32 = 66;
+pub const ALERT_LEO_PNT: u32 = 71;
+// Transport Signaling Defense (Module 65)
+pub const ALERT_FRMCS_LDACS: u32 = 68;
+// 6G Horizon Defense (Modules 66-67, 70)
+pub const ALERT_AI_RAN_INTEGRITY: u32 = 69;
+pub const ALERT_PQC_DOWNGRADE: u32 = 70;
+pub const ALERT_NON_CREDENTIAL_ABUSE: u32 = 73;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Telecom Structs (eBPF map values)
@@ -825,6 +892,116 @@ pub struct AisVesselState {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Next-Generation Wireless Structs (Features 173-200, Modules 56-70)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Wi-Fi 6/7 Multi-Link Operation link state (F173-F174, Module 56)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MloLinkState {
+    pub mld_addr_hash: u32, // MLD MAC address hash
+    pub link_id: u8,        // MLO link identifier
+    pub key_gen: u8,        // per-link key generation counter
+    pub auth_suite: u16,    // WPA3/SAE suite selector
+    pub desync_count: u32,  // observed link desynchronization events
+    pub seq_num: u32,       // per-link sequence number
+    pub _pad: u32,
+    pub timestamp_ns: u64,
+}
+
+/// Direct-to-Cell satellite cell state (F180-F181, F184, Module 61)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct D2cCellState {
+    pub plmn: u32,           // PLMN ID (MCC/MNC packed)
+    pub cell_global_id: u32, // NCGI of the serving satellite cell
+    pub tac: u32,
+    pub sat_indicator: u8, // NTN/SCS indicator from SIB19
+    pub regen_payload: u8, // 1 = regenerative gNB on board (Rel-19 NTN)
+    pub _pad: [u8; 2],
+    pub timing_advance: u32,
+    pub _pad2: u32,
+    pub timestamp_ns: u64,
+}
+
+/// Secure ranging state for UWB 802.15.4z / Bluetooth 6.0 CS (F185-F187, Module 57)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SecureRangingState {
+    pub ranging_type: u8, // 0=UWB HRP, 1=BT channel sounding
+    pub auth_level: u8,   // STS/DRBG security level in use
+    pub _pad: [u8; 2],
+    pub session_hash: u32, // ranging session identifier hash
+    pub measured_dist_cm: u32,
+    pub sts_hash: u32, // scrambled timestamp sequence hash
+    pub _pad2: u32,
+    pub timestamp_ns: u64,
+}
+
+/// Matter smart-home session state (F189-F190, Module 58)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct MatterSessionState {
+    pub node_id_hash: u64, // Matter operational node ID hash
+    pub passcode_attempts: u32,
+    pub acl_version: u32, // access control list version
+    pub commissioning_state: u8,
+    pub _pad: [u8; 3],
+    pub _pad2: u32,
+    pub timestamp_ns: u64,
+}
+
+/// Ambient IoT device state — 3GPP Rel-19 batteryless classes (F191, Module 59)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AmbientIotState {
+    pub device_id_hash: u32,
+    pub device_class: u8, // 0=A (backscatter), 1=B, 2=C (±20 dBm)
+    pub _pad: [u8; 3],
+    pub report_count: u32,
+    pub signal_dbm: i16,
+    pub _pad2: u16,
+    pub _pad3: u32,
+    pub timestamp_ns: u64,
+}
+
+/// LEO PNT signal state — Xona Pulsar-class / Galileo OSNMA (F182-F183, Modules 62/68)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LeoPntState {
+    pub sat_id: u16,
+    pub beam_id: u16,
+    pub cn0_dbhz: u32,
+    pub doppler_hz: i32,
+    pub auth_status: u8, // 0=unauthenticated, 1=OSNMA verified, 2=OSNMA failed
+    pub _pad: [u8; 3],
+    pub _pad2: u32,
+    pub timestamp_ns: u64,
+}
+
+/// AI-native RAN model integrity state (F195-F196, Module 66)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct AiRanModelState {
+    pub model_id_hash: u32,
+    pub version: u32,
+    pub integrity_hash: u64,
+    pub timestamp_ns: u64,
+}
+
+/// Post-quantum cryptography handshake state (F198, Module 67)
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct PqcHandshakeState {
+    pub suite_id: u32, // NIST PQC suite (Kyber/Dilithium class)
+    pub peer_hash: u32,
+    pub classic_fallback: u8, // 1 = downgraded to classic crypto
+    pub _pad: [u8; 3],
+    pub _pad2: u32,
+    pub timestamp_ns: u64,
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Pod trait — required for eBPF map value types
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -883,6 +1060,14 @@ unsafe impl Pod for BroadcastInjectState {}
 unsafe impl Pod for EcpriFronthaulState {}
 unsafe impl Pod for OranRicState {}
 unsafe impl Pod for AisVesselState {}
+unsafe impl Pod for MloLinkState {}
+unsafe impl Pod for D2cCellState {}
+unsafe impl Pod for SecureRangingState {}
+unsafe impl Pod for MatterSessionState {}
+unsafe impl Pod for AmbientIotState {}
+unsafe impl Pod for LeoPntState {}
+unsafe impl Pod for AiRanModelState {}
+unsafe impl Pod for PqcHandshakeState {}
 
 #[cfg(test)]
 mod tests {
@@ -1007,6 +1192,34 @@ mod tests {
             EVENT_F1AP_CU_DU_EXPLOIT,
             EVENT_AIS_POSITION_SPOOF,
             EVENT_AIS_CPA_ABUSE,
+            EVENT_WIFI7_MLO_LINK_DESYNC,
+            EVENT_WIFI7_MLO_KEY_ABUSE,
+            EVENT_WIFI6_AFC_IMPERSONATION,
+            EVENT_WIFI6_OFDMA_RU_JAM,
+            EVENT_WIFI_SENSING_PRIVACY,
+            EVENT_WIFI_HALOW_EXPLOIT,
+            EVENT_WIFI8_MAPC_ROGUE,
+            EVENT_D2C_CELL_SPOOF,
+            EVENT_NTN_REGEN_INJECT,
+            EVENT_LEO_PNT_SPOOF,
+            EVENT_GNSS_AUTH_BYPASS,
+            EVENT_NBNTN_SAF_ABUSE,
+            EVENT_UWB_RANGING_MANIP,
+            EVENT_UWB_KEY_RELAY,
+            EVENT_BT_CS_SPOOF,
+            EVENT_BT_AURACAST_ABUSE,
+            EVENT_MATTER_PASSCODE_ATTACK,
+            EVENT_MATTER_ACL_MANIP,
+            EVENT_AMBIENT_IOT_CLONE,
+            EVENT_DECT2020_INJECT,
+            EVENT_FRMCS_INJECT,
+            EVENT_LDACS_INJECT,
+            EVENT_6G_AI_PERTURB,
+            EVENT_6G_RIS_MANIP,
+            EVENT_6G_THZ_BLOCKAGE,
+            EVENT_6G_PQC_DOWNGRADE,
+            EVENT_6G_NON_CRED_ABUSE,
+            EVENT_6G_ISAC_ABUSE,
         ];
         for i in 0..offense_events.len() {
             for j in (i + 1)..offense_events.len() {
@@ -1062,6 +1275,21 @@ mod tests {
             ALERT_ORAN_FRONTHAUL,
             ALERT_ORAN_RIC,
             ALERT_AIS_INTEGRITY,
+            ALERT_MLO_INTEGRITY,
+            ALERT_SECURE_RANGING,
+            ALERT_MATTER_COMMISSIONING,
+            ALERT_AMBIENT_IOT,
+            ALERT_DECT2020_INTEGRITY,
+            ALERT_D2C_CELL_SPOOF,
+            ALERT_GNSS_AUTH_FAILURE,
+            ALERT_NTN_REGEN_ANOMALY,
+            ALERT_WIFI_SENSING,
+            ALERT_FRMCS_LDACS,
+            ALERT_AI_RAN_INTEGRITY,
+            ALERT_PQC_DOWNGRADE,
+            ALERT_LEO_PNT,
+            ALERT_MAPC_INTEGRITY,
+            ALERT_NON_CREDENTIAL_ABUSE,
         ];
         for i in 0..alerts.len() {
             for j in (i + 1)..alerts.len() {
@@ -1077,9 +1305,9 @@ mod tests {
     #[test]
     fn event_and_alert_ranges_dont_overlap() {
         let min_event = EVENT_AT_CMD_INJECT;
-        let max_event = EVENT_AIS_CPA_ABUSE;
+        let max_event = EVENT_6G_ISAC_ABUSE;
         let min_alert = ALERT_ROGUE_TOWER;
-        let max_alert = ALERT_AIS_INTEGRITY;
+        let max_alert = ALERT_NON_CREDENTIAL_ABUSE;
         assert!(
             max_alert < min_event || max_event < min_alert,
             "Event range [{min_event},{max_event}] overlaps alert range [{min_alert},{max_alert}]"
@@ -1130,5 +1358,17 @@ mod tests {
         assert_eq!(mem::size_of::<AkaAuthState>(), 64);
         assert_eq!(mem::size_of::<HandoverCtx>(), 24);
         assert_eq!(mem::size_of::<SidelinkCtx>(), 32);
+    }
+
+    #[test]
+    fn nextgen_struct_sizes() {
+        assert_eq!(mem::size_of::<MloLinkState>(), 32);
+        assert_eq!(mem::size_of::<D2cCellState>(), 32);
+        assert_eq!(mem::size_of::<SecureRangingState>(), 32);
+        assert_eq!(mem::size_of::<MatterSessionState>(), 32);
+        assert_eq!(mem::size_of::<AmbientIotState>(), 32);
+        assert_eq!(mem::size_of::<LeoPntState>(), 32);
+        assert_eq!(mem::size_of::<AiRanModelState>(), 24);
+        assert_eq!(mem::size_of::<PqcHandshakeState>(), 24);
     }
 }

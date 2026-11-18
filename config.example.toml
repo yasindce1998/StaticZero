@@ -15,6 +15,12 @@ telecom_detect = true
 # VoLTE fraud, eSIM tamper, slice violation, roaming anomaly, RF fingerprint
 telecom_advanced = false
 
+# Note: 5G core (29-32), satellite (33-39), RF protocol domains (40-55), and
+# next-generation wireless groups (56-70) are enabled via CLI flags
+# (--telecom-5g-defense, --satellite-defense, --rf-defense,
+# --nextgen-wifi-defense, --d2c-defense, --secure-ranging-defense,
+# --nextgen-iot-defense, --sixg-defense) or --all.
+
 # Emit alerts as JSON lines (for SIEM/pipeline ingestion)
 json_output = false
 

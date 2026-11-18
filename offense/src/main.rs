@@ -73,6 +73,26 @@ struct Cli {
     #[arg(long)]
     enable_rf: bool,
 
+    /// Enable next-gen Wi-Fi exploitation (F173-F179: Wi-Fi 6/6E/7/8 MLO, AFC, OFDMA, 802.11bf sensing, HaLow, MAPC)
+    #[arg(long)]
+    enable_nextgen_wifi: bool,
+
+    /// Enable satellite direct-to-cell and PNT exploitation (F180-F184: D2C spoof, NTN regenerative, LEO PNT, OSNMA bypass, NB-NTN store-and-forward)
+    #[arg(long)]
+    enable_d2c: bool,
+
+    /// Enable secure ranging exploitation (F185-F188: UWB 802.15.4z, digital key relay, BT 6.0 channel sounding, Auracast)
+    #[arg(long)]
+    enable_secure_ranging: bool,
+
+    /// Enable next-gen IoT exploitation (F189-F194: Matter, Ambient IoT, DECT-2020 NR, FRMCS, LDACS)
+    #[arg(long)]
+    enable_nextgen_iot: bool,
+
+    /// Enable 6G horizon exploitation (F195-F200: AI-RAN adversarial, RIS, THz, PQC downgrade, network-of-networks, ISAC)
+    #[arg(long)]
+    enable_6g: bool,
+
     /// SBI/core network interface for NF interception
     #[arg(long, default_value = "sbi0")]
     sbi_iface: String,
@@ -162,6 +182,11 @@ async fn main() -> Result<()> {
     let enable_5g = cli.all || cli.enable_5g_advanced;
     let enable_satellite = cli.all || cli.enable_satellite;
     let enable_rf = cli.all || cli.enable_rf;
+    let enable_nextgen_wifi = cli.all || cli.enable_nextgen_wifi;
+    let enable_d2c = cli.all || cli.enable_d2c;
+    let enable_secure_ranging = cli.all || cli.enable_secure_ranging;
+    let enable_nextgen_iot = cli.all || cli.enable_nextgen_iot;
+    let enable_6g = cli.all || cli.enable_6g;
 
     // ── Features 89-100: Telecom Interception ────────────────────────────────
     if enable_telecom {
@@ -617,6 +642,241 @@ async fn main() -> Result<()> {
                     "{} loaded (attach to {}/{} manually)",
                     desc, cli.sdr_iface, cli.fronthaul_iface
                 );
+            }
+        }
+    }
+
+    // ── Features 173-179: Next-Generation Wi-Fi (6/6E/7/8, sensing, HaLow) ──
+    if enable_nextgen_wifi {
+        let kprobes = [
+            (
+                "shadow_wifi7_mlo_key_abuse",
+                "cfg80211_rx_mgmt",
+                "F174: MLO Key Separation Abuse",
+            ),
+            (
+                "shadow_wifi_sensing_privacy",
+                "cfg80211_rx_mgmt",
+                "F177: 802.11bf Sensing Privacy Exploit",
+            ),
+        ];
+        attach_kprobes!(kprobes);
+
+        let xdp_progs = [
+            (
+                "shadow_wifi6_ofdma_ru_jam",
+                "F176: OFDMA RU Selective Jamming",
+                &cli.wifi_iface,
+            ),
+            (
+                "shadow_wifi_halow_exploit",
+                "F178: Wi-Fi HaLow Sub-GHz Exploit",
+                &cli.wpan_iface,
+            ),
+        ];
+        for (name, desc, iface) in &xdp_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let xdp: &mut Xdp = prog.try_into()?;
+                xdp.load()?;
+                xdp.attach(iface, XdpFlags::default())?;
+                info!("{} enabled on {}", desc, iface);
+            }
+        }
+
+        let tc_progs = [
+            (
+                "shadow_wifi7_mlo_link_desync",
+                "F173: MLO Link Desynchronization Attack",
+            ),
+            (
+                "shadow_wifi6_afc_impersonation",
+                "F175: 6 GHz AFC Impersonation",
+            ),
+            ("shadow_wifi8_mapc_rogue", "F179: Wi-Fi 8 MAPC Rogue"),
+        ];
+        for (name, desc) in &tc_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let tc: &mut SchedClassifier = prog.try_into()?;
+                tc.load()?;
+                info!("{} loaded (attach to {} manually)", desc, cli.wifi_iface);
+            }
+        }
+    }
+
+    // ── Features 180-184: Satellite Direct-to-Cell & PNT ─────────────────────
+    if enable_d2c {
+        let kprobes = [(
+            "shadow_gnss_auth_bypass",
+            "sdr_rx_callback",
+            "F183: Galileo OSNMA Authentication Bypass Probe",
+        )];
+        attach_kprobes!(kprobes);
+
+        let xdp_progs = [(
+            "shadow_leo_pnt_spoof",
+            "F182: LEO PNT Signal Spoofing",
+            &cli.sdr_iface,
+        )];
+        for (name, desc, iface) in &xdp_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let xdp: &mut Xdp = prog.try_into()?;
+                xdp.load()?;
+                xdp.attach(iface, XdpFlags::default())?;
+                info!("{} enabled on {}", desc, iface);
+            }
+        }
+
+        let tc_progs = [
+            (
+                "shadow_d2c_cell_spoof",
+                "F180: Direct-to-Cell Spoofed Satellite Cell",
+            ),
+            (
+                "shadow_ntn_regen_inject",
+                "F181: NTN Regenerative gNB Injection",
+            ),
+            (
+                "shadow_nbntn_saf_abuse",
+                "F184: NB-NTN Store-and-Forward Abuse",
+            ),
+        ];
+        for (name, desc) in &tc_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let tc: &mut SchedClassifier = prog.try_into()?;
+                tc.load()?;
+                info!("{} loaded (attach to {} manually)", desc, cli.sat_iface);
+            }
+        }
+    }
+
+    // ── Features 185-188: UWB / Secure Ranging / Bluetooth 6.0 ───────────────
+    if enable_secure_ranging {
+        let kprobes = [
+            (
+                "shadow_uwb_ranging_manip",
+                "sdr_rx_callback",
+                "F185: UWB 802.15.4z Ranging Manipulation",
+            ),
+            (
+                "shadow_bt_cs_spoof",
+                "hci_send_frame",
+                "F187: BT 6.0 Channel Sounding Spoof",
+            ),
+            (
+                "shadow_bt_auracast_abuse",
+                "hci_send_frame",
+                "F188: Auracast Broadcast Key Abuse",
+            ),
+        ];
+        attach_kprobes!(kprobes);
+
+        if let Some(prog) = bpf.program_mut("shadow_uwb_key_relay") {
+            let xdp: &mut Xdp = prog.try_into()?;
+            xdp.load()?;
+            xdp.attach(&cli.sdr_iface, XdpFlags::default())?;
+            info!("F186: UWB Digital Key Relay enabled on {}", cli.sdr_iface);
+        }
+    }
+
+    // ── Features 189-194: Next-Gen IoT & Critical Infrastructure ─────────────
+    if enable_nextgen_iot {
+        let kprobes = [(
+            "shadow_matter_passcode_attack",
+            "tcp_sendmsg",
+            "F189: Matter Onboarding Passcode Attack",
+        )];
+        attach_kprobes!(kprobes);
+
+        let xdp_progs = [(
+            "shadow_dect2020_inject",
+            "F192: DECT-2020 NR Mesh Injection",
+            &cli.wpan_iface,
+        )];
+        for (name, desc, iface) in &xdp_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let xdp: &mut Xdp = prog.try_into()?;
+                xdp.load()?;
+                xdp.attach(iface, XdpFlags::default())?;
+                info!("{} enabled on {}", desc, iface);
+            }
+        }
+
+        let tc_progs = [
+            ("shadow_matter_acl_manip", "F190: Matter ACL Manipulation"),
+            (
+                "shadow_ambient_iot_clone",
+                "F191: Ambient IoT Device Cloning",
+            ),
+            (
+                "shadow_frmcs_inject",
+                "F193: FRMCS Railway Signaling Injection",
+            ),
+            (
+                "shadow_ldacs_inject",
+                "F194: LDACS Aviation Datalink Injection",
+            ),
+        ];
+        for (name, desc) in &tc_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let tc: &mut SchedClassifier = prog.try_into()?;
+                tc.load()?;
+                info!(
+                    "{} loaded (attach to {}/{} manually)",
+                    desc, cli.sdr_iface, cli.fronthaul_iface
+                );
+            }
+        }
+    }
+
+    // ── Features 195-200: 6G Horizon ─────────────────────────────────────────
+    if enable_6g {
+        let kprobes = [
+            (
+                "shadow_6g_ris_manip",
+                "tcp_sendmsg",
+                "F196: RIS Reflection Manipulation",
+            ),
+            (
+                "shadow_6g_pqc_downgrade",
+                "tcp_sendmsg",
+                "F198: PQC Handshake Downgrade",
+            ),
+        ];
+        attach_kprobes!(kprobes);
+
+        let xdp_progs = [
+            (
+                "shadow_6g_ai_perturb",
+                "F195: AI-Native Air Interface Adversarial Perturbation",
+                &cli.sdr_iface,
+            ),
+            (
+                "shadow_6g_thz_blockage",
+                "F197: THz Beam Blockage Attack",
+                &cli.sdr_iface,
+            ),
+        ];
+        for (name, desc, iface) in &xdp_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let xdp: &mut Xdp = prog.try_into()?;
+                xdp.load()?;
+                xdp.attach(iface, XdpFlags::default())?;
+                info!("{} enabled on {}", desc, iface);
+            }
+        }
+
+        let tc_progs = [
+            (
+                "shadow_6g_non_cred_abuse",
+                "F199: Network-of-Networks Credential Abuse",
+            ),
+            ("shadow_6g_isac_abuse", "F200: ISAC Sensing Abuse"),
+        ];
+        for (name, desc) in &tc_progs {
+            if let Some(prog) = bpf.program_mut(name) {
+                let tc: &mut SchedClassifier = prog.try_into()?;
+                tc.load()?;
+                info!("{} loaded (attach to {} manually)", desc, cli.sbi_iface);
             }
         }
     }

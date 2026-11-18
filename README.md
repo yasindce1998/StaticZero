@@ -7,19 +7,22 @@
 [![Rust](https://img.shields.io/badge/rust-nightly-orange.svg)](https://www.rust-lang.org/)
 [![eBPF](https://img.shields.io/badge/eBPF-CO--RE-green.svg)](https://ebpf.io/)
 
-eBPF-based telecom security research framework covering 2G through 5G and non-terrestrial networks (satellite, GNSS, aviation). Operates at the kernel level using Linux eBPF for real-time interception, analysis, and anomaly detection across cellular and satellite protocols.
+eBPF-based telecom security research framework covering 2G through 5G, non-terrestrial networks (satellite, GNSS, aviation), and next-generation wireless (Wi-Fi 6/6E/7/8, satellite direct-to-cell, UWB secure ranging, Matter, Ambient IoT, DECT-2020 NR, and 6G horizon attack surfaces). Operates at the kernel level using Linux eBPF for real-time interception, analysis, and anomaly detection across cellular, satellite, and short-range protocols.
 
 > **Research/educational purposes only.** Unauthorized interception of telecommunications is illegal in most jurisdictions.
 
 > **Implementation status:** The capability tables are a research catalog, not
 > proof of working live interception/detection. Defense Module 22 has an
-> experimental passive `openat` adapter; Modules 16–21 and 23–55 currently lack
+> experimental passive `openat` adapter; Modules 16–21 and 23–70 currently lack
 > validated attachment adapters and are reported as unsupported by the loader.
 > SDR hardware methods also include scaffolding. Lab-tier smoke tests cover
 > offensive kprobe attachment, XDP/TC traffic-path probes, real modem device
 > nodes, and the sdr-bridge TX pipeline — see
 > [lab smoke tests](docs/LAB_SMOKE_TESTS.md) and
 > [defense validation](docs/DEFENSE_VALIDATION.md) for scope and limitations.
+> Next-generation features (F173–F200, Modules 56–70) catalog emerging
+> standards; see [docs/NEXTGEN_RESEARCH.md](docs/NEXTGEN_RESEARCH.md) for the
+> research basis and standards status.
 
 ## Architecture
 
@@ -35,7 +38,7 @@ staticzero/
 └── scripts/          # Lab automation
 ```
 
-## Offensive Capabilities (F89–F172)
+## Offensive Capabilities (F89–F200)
 
 ### Core Telecom Interception (F89–F100)
 
@@ -206,7 +209,60 @@ staticzero/
 | 171 | AIS Position Spoofing | TC on SDR iface | 161.975/162.025 MHz GMSK, phantom vessels |
 | 172 | AIS Collision Avoidance Abuse | kprobe: `sdr_rx_callback` | Ghost tracks triggering CPA/TCPA alarms |
 
-## Defensive Capabilities (Modules 16–55)
+### Next-Generation Wi-Fi 6/6E/7/8 (F173–F179)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 173 | MLO Link Desynchronization Attack | TC on WLAN iface | 802.11be Multi-Link Element teardown, single-link fallback |
+| 174 | MLO Key Separation Abuse | kprobe: `cfg80211_rx_mgmt` | Per-link key generation confusion (stale/cross-link keys) |
+| 175 | 6 GHz AFC Impersonation | TC on WLAN iface | Standard-power AP claims bypassing AFC constraints |
+| 176 | OFDMA Resource Unit Selective Jamming | XDP on WLAN iface | HE/EHT RU puncturing, per-station DoS |
+| 177 | 802.11bf Sensing Privacy Exploit | kprobe: `cfg80211_rx_mgmt` | Fast sensing polls for through-wall presence tracking |
+| 178 | Wi-Fi HaLow Sub-GHz Exploit | XDP on WPAN iface | 802.11ah S1G beacons at 900 MHz |
+| 179 | Wi-Fi 8 Multi-AP Coordination Rogue | TC on WLAN iface | 802.11bn MAPC (Co-BF/Co-SR/Co-TDMA) rogue injection |
+
+### Satellite Direct-to-Cell & PNT (F180–F184)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 180 | Direct-to-Cell Spoofed Satellite Cell | TC on sat-iface | SCS/NTN indicator spoof, satellite IMSI catcher |
+| 181 | NTN Regenerative gNB Injection | TC (SCTP:38412) | Rel-19 gNB-on-board feeder link NGAP |
+| 182 | LEO PNT Signal Spoofing | XDP on SDR iface | Xona Pulsar-class LEO positioning forgery |
+| 183 | Galileo OSNMA Authentication Bypass Probe | kprobe: `sdr_rx_callback` | Forged I/NAV with absent/inconsistent TESLA chains |
+| 184 | NB-NTN Store-and-Forward Abuse | TC on sat-iface | Rel-19 satellite IoT queue delay/replay |
+
+### UWB / Secure Ranging / Bluetooth 6.0 (F185–F188)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 185 | UWB 802.15.4z Ranging Manipulation | kprobe: `sdr_rx_callback` | STS clock desync (Mix-Down class), distance reduction |
+| 186 | UWB Digital Key Relay Probe | XDP on SDR iface | CCC Digital Key 3.0 ranging relay |
+| 187 | BT 6.0 Channel Sounding Spoof | kprobe: `hci_send_frame` | Phase-based ranging tone distortion |
+| 188 | Auracast Broadcast Key Abuse | kprobe: `hci_send_frame` | LE Audio broadcast code harvest |
+
+### Matter / Ambient IoT / Critical Infrastructure (F189–F194)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 189 | Matter Onboarding Passcode Attack | kprobe: `tcp_sendmsg` | SPAKE2+ low-entropy passcode brute force |
+| 190 | Matter ACL Manipulation | TC classifier | Non-atomic ACL updates (CVE-2024-56317 class) |
+| 191 | Ambient IoT Device Cloning | TC classifier | Rel-19 batteryless class-A backscatter identity spoof |
+| 192 | DECT-2020 NR Mesh Injection | XDP on WPAN iface | 1.9 GHz massive-mesh signaling injection |
+| 193 | FRMCS Railway Signaling Injection | TC (SCTP:38422) | 5G-based GSM-R successor, train control |
+| 194 | LDACS Aviation Datalink Injection | TC on fronthaul iface | L-band aeronautical ATC/OPS datalink |
+
+### 6G Horizon (F195–F200)
+
+| # | Feature | Hook Point | Target |
+|---|---------|-----------|--------|
+| 195 | AI-Native Air Interface Adversarial Perturbation | XDP on SDR iface | Learned receiver confusion, model inversion |
+| 196 | RIS Reflection Manipulation | kprobe: `tcp_sendmsg` | Reconfigurable intelligent surface phase control |
+| 197 | THz Beam Blockage Attack | XDP on SDR iface | Codebook manipulation, beam-training exhaustion |
+| 198 | PQC Handshake Downgrade | kprobe: `tcp_sendmsg` | ML-KEM → classic fallback (harvest-now-decrypt-later) |
+| 199 | Network-of-Networks Credential Abuse | TC on SBI iface | Cross-RAT credential crossing in 6G trust fabric |
+| 200 | ISAC Sensing Abuse | TC classifier | Cellular radar as subscriber tracking side channel |
+
+## Defensive Capabilities (Modules 16–70)
 
 ### Basic Telecom Detection (16–23)
 
@@ -303,11 +359,31 @@ staticzero/
 |---|--------|-----------------|
 | 55 | AIS Signal Integrity | Physics violations (>50kn, impossible turn rates), position jumps, duplicate MMSI |
 
+### Next-Generation Wireless Defense (56–70)
+
+| # | Module | Detection Method |
+|---|--------|-----------------|
+| 56 | Wi-Fi 6/7 MLO Integrity Monitor | Per-link key generation mismatch, link sequence desync, AKM inconsistency |
+| 57 | UWB/BT CS Secure Ranging Anomaly | STS failures, ToF vs claimed geometry, BT CS phase anomalies |
+| 58 | Matter Commissioning Anomaly | Passcode attempt bursts, ACL version regression, pre-auth patterns |
+| 59 | Ambient IoT Device Identity Anomaly | Duplicate batteryless IDs with divergent power, clone fingerprints |
+| 60 | DECT-2020 NR Mesh Integrity | Rogue relay joins, cluster param changes, unauthenticated mesh frames |
+| 61 | D2C Satellite Cell Verification | Terrestrial timing advance on satellite cell, missing ephemeris, doppler mismatch |
+| 62 | GNSS Authentication Monitor (OSNMA) | Galileo OSNMA tesla chain failures, SAS verdicts, I/NAV inconsistencies |
+| 63 | NTN Regenerative Payload Anomaly | Feeder-link NGAP from unregistered gNB-on-board, ephemeris/TA mismatch |
+| 64 | Wi-Fi Sensing Privacy Guard (802.11bf) | 802.11bf sensing poll floods, unsolicited measurement requests |
+| 65 | FRMCS/LDACS Transport Signaling Integrity | Train/aircraft signaling from unauthorized sources, procedure violations |
+| 66 | AI-RAN Model Integrity Monitor | Model/perturbation anomalies, adversarial inference patterns |
+| 67 | PQC Handshake Downgrade Detection | Quantum-safe → classic fallback transitions, suite inconsistency |
+| 68 | LEO PNT Signal Authentication | C/N0 ceiling violations, doppler slope anomalies, unauthenticated beams |
+| 69 | Wi-Fi 8 MAPC / HaLow Integrity | Rogue coordination set members, S1G beacon anomalies |
+| 70 | Network-of-Networks Credential Monitor | Credential reuse across non-3GPP networks, trust fabric violations |
+
 ## Correlation Engine
 
 Cross-layer protocol correlation detects complex attack chains that single-module detection would miss. The `TelecomCorrelationEngine` ingests alerts from all modules and identifies compound threats across seven protocol layers (Radio, NAS, Transport, Signaling, Core, SBI, Satellite).
 
-Threat categories: IMSI Catching, MitM, Protocol Downgrade, Signaling Abuse, Toll Fraud, Location Tracking, Data Interception, Service Denial, Slice Escape, Roaming Exploit, SBI Compromise, Handover Hijack, RAN Sharing Breach, Signaling Storm, Identity Exposure, Satellite Link Hijack, GNSS Spoofing, Beacon Falsification, Terminal Compromise, WiFi Rogue AP, Fronthaul Compromise, AIS Spoofing.
+Threat categories: IMSI Catching, MitM, Protocol Downgrade, Signaling Abuse, Toll Fraud, Location Tracking, Data Interception, Service Denial, Slice Escape, Roaming Exploit, SBI Compromise, Handover Hijack, RAN Sharing Breach, Signaling Storm, Identity Exposure, Satellite Link Hijack, GNSS Spoofing, Beacon Falsification, Terminal Compromise, WiFi Rogue AP, Fronthaul Compromise, AIS Spoofing, Secure Ranging Spoofing, D2C Cell Spoofing, Smart Home Compromise, AI-RAN Compromise, PQC Downgrade.
 
 Satellite-specific correlation patterns:
 - DVB-S2 anomaly + VSAT integrity failure → coordinated transponder takeover
@@ -320,6 +396,15 @@ RF protocol domain correlation patterns:
 - eCPRI fronthaul anomaly + RIC security violation → coordinated O-RAN compromise (confidence 0.93, severity 5)
 - AIS physics violation + GNSS spoofing → maritime position falsification (confidence 0.94, severity 5)
 
+Next-generation wireless correlation patterns:
+- D2C cell spoof + GNSS authentication failure → spoofed satellite cell / D2C impersonation (confidence 0.92, severity 5)
+- D2C cell spoof + IMSI catcher → satellite-grade IMSI catching (confidence 0.95, severity 5)
+- LEO PNT anomaly + OSNMA failure → multi-constellation PNT spoofing (confidence 0.93, severity 5)
+- Matter commissioning abuse + Ambient IoT/DECT-2020 anomaly → smart home takeover chain (confidence 0.88, severity 4)
+- MLO integrity failure + WPA3 integrity failure → Wi-Fi 7 MLO evil twin (confidence 0.93, severity 4)
+- AI-RAN model tampering + PQC downgrade → 6G control plane compromise (confidence 0.90, severity 5)
+- Secure ranging manipulation + RKE jamming → vehicle digital key theft chain (confidence 0.91, severity 4)
+
 ## Tools
 
 ### SDR Bridge
@@ -331,11 +416,20 @@ Hardware-abstracted radio interface supporting HackRF, bladeRF, USRP, RTL-SDR, a
 - **PFCP** (N4: SMF↔UPF) — Session/Association/Heartbeat parsing per 3GPP TS 29.244
 - **NGAP** (N2: AMF↔gNB) — UE context, handover, PDU session, paging per TS 38.413
 - **XnAP** (Xn: gNB↔gNB) — Handover preparation, SN status transfer, RAN paging per TS 38.423
+- **E2AP** (E2: near-RT RIC↔eNB/gNB) — RIC subscription, control, indication per O-RAN.WG3
+- **F1AP** (F1: gNB-CU↔gNB-DU) — UE context setup, RRC transfer per TS 38.470/38.473
+
+### Next-Generation Tools
+
+- **`osnma-verify`** — Galileo OSNMA verification: NMA header parsing, TESLA key chain checks, and MAC verification with in-tree HMAC-SHA256 (RFC 2104/4231 tested). Upgrades GNSS spoofing detection from heuristics to cryptographic verification. `osnma-verify selftest` runs known-answer tests.
+- **`d2c-monitor`** — Direct-to-Cell satellite cell monitor: physics consistency checks (timing advance, doppler, ephemeris, RSRP) that flag spoofed satellite cells — the satellite equivalent of an IMSI catcher. JSON-lines in/out.
+- **`mlo-analyzer`** — Wi-Fi 7 Multi-Link Operation analyzer: per-MLD link tracking that detects link desynchronization, key separation abuse, AKM suite inconsistency, and link flapping. JSON-lines in/out.
 
 ## Documentation
 
 - [docs/usecase.md](docs/usecase.md) — Use cases, how-to guides, full offense/defense reference
 - [docs/TELECOM_THREAT_MODEL.md](docs/TELECOM_THREAT_MODEL.md) — Attack trees, threat actors, MITRE mapping
+- [docs/NEXTGEN_RESEARCH.md](docs/NEXTGEN_RESEARCH.md) — Research basis for next-gen features (F173–F200, Modules 56–70)
 - [docs/LAB_SETUP.md](docs/LAB_SETUP.md) — Isolated lab environment configuration
 - [docs/LAB_SMOKE_TESTS.md](docs/LAB_SMOKE_TESTS.md) — Real-kernel/real-hardware smoke tests: offensive probes, traffic path, modem devices, RF TX
 - [docs/DEFENSE_VALIDATION.md](docs/DEFENSE_VALIDATION.md) — Runtime support, read-only preflight, passive smoke tests
@@ -385,6 +479,16 @@ sudo ./target/release/staticzero-offense --enable-satellite --sat-iface sat0
 # Run with RF protocol domain modules (TETRA/P25, BLE, Zigbee, LoRaWAN, WiFi, RKE, UAV, paging, broadcast, O-RAN, AIS)
 sudo ./target/release/staticzero-defense --rf_defense
 sudo ./target/release/staticzero-offense --enable-rf --sdr-iface sdr0 --fronthaul-iface eth0
+
+# Run with next-generation wireless modules (Wi-Fi 6/7/8, D2C satellite, UWB,
+# Matter/Ambient IoT/DECT, 6G horizon)
+sudo ./target/release/staticzero-defense --nextgen_wifi_defense --d2c_defense --sixg_defense
+sudo ./target/release/staticzero-offense --enable-nextgen-wifi --enable-d2c --enable-6g
+
+# Next-generation tools
+./target/release/osnma-verify selftest
+./target/release/d2c-monitor < reports.jsonl
+./target/release/mlo-analyzer < mlo_frames.jsonl
 
 # Lab-tier smoke tests: offensive probes, traffic path, real modem devices,
 # RF TX pipeline (see docs/LAB_SMOKE_TESTS.md)

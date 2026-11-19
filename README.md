@@ -111,7 +111,7 @@ sudo staticzero offense --enable-telecom --gtp-iface gtp0
 | `staticzero d2c-monitor` | Flags **spoofed satellite cells** (Starlink D2C / AST / Skylo) by physics: timing advance, doppler, ephemeris |
 | `staticzero mlo-analyzer` | Detects **Wi-Fi 7 MLO attacks**: link desync, key separation abuse, AKM mismatch, flapping |
 | `staticzero 6g-sim` | 6G control-plane trace analyzer + scenario generator (AI-RAN integrity, PQC downgrade, credential crossing) |
-| `staticzero sdr-bridge` | Hardware-abstracted SDR control (HackRF, bladeRF, USRP, RTL-SDR, LimeSDR) with a JSON API |
+| `staticzero sdr-bridge` | Hardware-abstracted SDR control (HackRF, bladeRF, USRP, RTL-SDR, LimeSDR) with a JSON API — real hardware via the `soapy` feature (SoapySDR) |
 | `staticzero modem-firmware` | Baseband firmware analyzer |
 | `staticzero protocol-correlator` | Cross-layer protocol correlation over captured traces |
 
@@ -137,6 +137,9 @@ Linux runners — not unit-test mocks:
   packets through the kernel datapath — [`scripts/offense_smoke.sh`](scripts/offense_smoke.sh)
 - **Passive defense + real modem nodes** — [`scripts/defense_smoke.sh`](scripts/defense_smoke.sh)
 - **SDR TX pipeline** (offline + cabled-hardware stages) — [`scripts/sdr_tx_smoke.sh`](scripts/sdr_tx_smoke.sh)
+- **SoapySDR device layer**: device enumeration, the tools test suite, and a
+  no-hardware enumeration smoke (`--mode list` → `[]`) all run against the real
+  libSoapySDR in a dedicated CI job
 
 Details and scope: [LAB_SMOKE_TESTS.md](docs/LAB_SMOKE_TESTS.md) ·
 [DEFENSE_VALIDATION.md](docs/DEFENSE_VALIDATION.md).
@@ -176,7 +179,10 @@ Next-generation wireless correlation patterns:
 > d2c-monitor / osnma-verify / 6g-sim verdict streams via `--tool-input`);
 > the remaining modules (16–21, 23–55, 57–60, and 63–69) currently lack
 > validated attachment adapters and are reported as unsupported by the
-> loader. SDR hardware methods also include scaffolding. Lab-tier smoke
+> loader. The `sdr-bridge` gains real hardware support via SoapySDR when
+> built with the `soapy` feature (enumeration, RX capture, channel power
+> scan, and CF32 TX; release binaries ship the stub device layer).
+> Lab-tier smoke
 > tests cover offensive kprobe attachment, XDP/TC traffic-path probes, real
 > modem device nodes, and the sdr-bridge TX pipeline — see
 > [lab smoke tests](docs/LAB_SMOKE_TESTS.md) and
@@ -573,6 +579,14 @@ cargo xtask build-ebpf --release
 # --features ebpf-bin, cargo build --release -p staticzero-tools, ...) —
 # releases only ship the multi-call `staticzero` binary.
 cargo build --release -p staticzero --features ebpf-bin
+
+# Real SDR hardware via SoapySDR (enumeration, RX capture, channel-power
+# scan, CF32 TX). Requires libsoapysdr-dev (Debian/Ubuntu) or soapysdr
+# (Arch) at build and runtime; the feature composes with ebpf-bin
+# (--features ebpf-bin,soapy). Note: --mode scan is a channel-power
+# survey per EARFCN in dBFS — no LTE PSS/MIB decoding. Release binaries
+# ship without the feature (stub device layer).
+cargo build --release -p staticzero --features soapy
 
 # Inspect supported/unsupported modules without loading or attaching BPF
 ./target/release/staticzero defense --doctor --all

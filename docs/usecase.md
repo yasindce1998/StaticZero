@@ -441,11 +441,56 @@ When `server.enabled = true`, the defense engine exposes:
 
 ### SDR Hardware Setup
 
-```bash
-# Start SDR bridge with HackRF
-staticzero-sdr --device hackrf --mode scan --freq-start 700e6 --freq-end 2700e6
+Real SDR hardware requires building from source with the `soapy` cargo
+feature — a hand-written FFI to libSoapySDR's stable C API (no new crate
+dependencies). Install `libsoapysdr-dev` (Debian/Ubuntu) or `soapysdr`
+(Arch) first; one SoapySDR backend then covers all five vendor families
+below through their driver modules. Release binaries ship the stub
+device layer, so hardware work means a source build:
 
-# Control API (JSON over TCP, port 9999)
+```bash
+cargo build -p staticzero-tools --features soapy
+# multi-call binary instead: cargo build -p staticzero --features soapy
+```
+
+Enumerate attached devices (works with no hardware attached — prints
+`[]`):
+
+```bash
+staticzero sdr-bridge --mode list
+```
+
+Real RX capture — a reader thread receives from the device and writes raw
+CF32 (interleaved native-endian f32 I/Q pairs) to the file until stopped:
+
+```bash
+staticzero sdr-bridge --device hackrf --mode capture --frequency 2620000000 --iq-output capture.cf32
+```
+
+Real power scan — the bridge tunes to each EARFCN, receives ~65k CF32
+samples, and measures wideband channel power in dBFS, reporting channels
+above a -70 dBFS threshold:
+
+```bash
+staticzero sdr-bridge --device hackrf --mode scan --scan-bands all-lte
+```
+
+> **Honest limitation:** `--mode scan` is a physical-layer channel-power
+> survey only. LTE PSS/SSS correlation and MIB/SIB decoding are **not**
+> implemented — `mib_decoded` stays `false` and no cell identity (PCI,
+> MCC/MNC) is decoded. Treat reported power levels as a spectral survey,
+> not cell discovery.
+
+Real TX — streams a CF32 file (interleaved f32 I/Q pairs) through the
+device at the configured frequency and gain:
+
+```bash
+staticzero sdr-bridge --device hackrf --mode inject --frequency 1842500000 --iq-input tone.cf32
+```
+
+Control API (JSON over TCP, port 9999):
+
+```bash
 echo '{"command":"scan","params":{"band":"n78","duration_ms":5000}}' | nc localhost 9999
 echo '{"command":"fingerprint","params":{"earfcn":1234}}' | nc localhost 9999
 echo '{"command":"inject","params":{"freq":1842500000,"power":-30}}' | nc localhost 9999

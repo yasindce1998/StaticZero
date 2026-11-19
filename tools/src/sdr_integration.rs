@@ -8,6 +8,28 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
+/// Channels measured above this CF32 power level are reported by the scan
+/// summary (rough noise-floor separation; RF environments vary).
+const POWER_SCAN_THRESHOLD_DBFS: f32 = -70.0;
+
+/// Read a CF32 IQ file: interleaved native-endian f32 I/Q pairs.
+fn read_cf32_file(path: &std::path::Path) -> Result<Vec<f32>> {
+    let bytes =
+        std::fs::read(path).map_err(|e| anyhow::anyhow!("read IQ file {}: {e}", path.display()))?;
+    ensure!(
+        bytes.len() % 8 == 0,
+        "CF32 file {} has a partial sample ({} bytes); expected 8 bytes per I/Q pair",
+        path.display(),
+        bytes.len()
+    );
+    Ok(bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|chunk| f32::from_ne_bytes(*chunk))
+        .collect())
+}
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
@@ -51,9 +73,13 @@ pub struct Cli {
     #[arg(long, default_value = "7891")]
     defense_port: u16,
 
-    /// Operating mode: scan, capture, inject, relay, selftest-tx
+    /// Operating mode: scan, capture, inject, relay, list, selftest-tx
     #[arg(long, default_value = "scan")]
     mode: String,
+
+    /// CF32 IQ file to transmit in inject mode (interleaved f32 I/Q pairs)
+    #[arg(long)]
+    iq_input: Option<PathBuf>,
 
     /// Band scan range (comma-separated EARFCN list or "all-lte")
     #[arg(long)]
@@ -152,6 +178,10 @@ pub struct SdrBridge {
     #[allow(dead_code)]
     decoded_frames: Arc<Mutex<Vec<DecodedFrame>>>,
     running: Arc<Mutex<bool>>,
+    /// Real SoapySDR device when built with the `soapy` feature; the stub
+    /// device layer (None) preserves the catalog/simulation behavior.
+    #[cfg(feature = "soapy")]
+    device: Option<std::sync::Arc<crate::soapy::SoapyDevice>>,
 }
 
 impl SdrBridge {
@@ -161,10 +191,12 @@ impl SdrBridge {
             scan_results: Arc::new(Mutex::new(Vec::new())),
             decoded_frames: Arc::new(Mutex::new(Vec::new())),
             running: Arc::new(Mutex::new(false)),
+            #[cfg(feature = "soapy")]
+            device: None,
         }
     }
 
-    pub fn init_device(&self) -> Result<()> {
+    pub fn init_device(&mut self) -> Result<()> {
         info!(
             "Initializing SDR device: type={}, freq={}MHz, sr={}Msps, gain={}dB",
             self.config.device_type,
@@ -173,45 +205,56 @@ impl SdrBridge {
             self.config.gain_db
         );
 
-        match self.config.device_type.as_str() {
-            "hackrf" => self.init_hackrf(),
-            "bladerf" => self.init_bladerf(),
-            "usrp" => self.init_usrp(),
-            "rtlsdr" => self.init_rtlsdr(),
-            "limesdr" => self.init_limesdr(),
-            other => anyhow::bail!("Unsupported SDR type: {}", other),
+        #[cfg(feature = "soapy")]
+        {
+            // Real hardware path: one SoapySDR backend covers all five
+            // vendor families through their driver modules.
+            let device = crate::soapy::SoapyDevice::open(
+                Some(self.config.device_type.as_str()),
+                self.config.device_id.as_deref(),
+            )
+            .map_err(anyhow::Error::msg)?;
+            device
+                .configure(
+                    crate::soapy::SOAPY_SDR_RX,
+                    self.config.frequency_hz,
+                    self.config.sample_rate_hz,
+                    self.config.bandwidth_hz,
+                    self.config.gain_db,
+                )
+                .map_err(anyhow::Error::msg)?;
+            device
+                .configure(
+                    crate::soapy::SOAPY_SDR_TX,
+                    self.config.frequency_hz,
+                    self.config.sample_rate_hz,
+                    self.config.bandwidth_hz,
+                    self.config.gain_db,
+                )
+                .map_err(anyhow::Error::msg)?;
+            info!(
+                "SoapySDR device open and configured (RX+TX, CF32, {} MHz)",
+                self.config.frequency_hz / 1_000_000
+            );
+            self.device = Some(std::sync::Arc::new(device));
+            Ok(())
         }
-    }
 
-    fn init_hackrf(&self) -> Result<()> {
-        info!("HackRF: Opening device via libhackrf");
-        // hackrf_init() → hackrf_open() → hackrf_set_freq/sample_rate/lna_gain/vga_gain
-        // In production: links to libhackrf.so via FFI
-        Ok(())
-    }
-
-    fn init_bladerf(&self) -> Result<()> {
-        info!("bladeRF: Opening device via libbladeRF");
-        // bladerf_open() → bladerf_set_frequency/sample_rate/gain
-        Ok(())
-    }
-
-    fn init_usrp(&self) -> Result<()> {
-        info!("USRP: Opening device via UHD");
-        // uhd::usrp::multi_usrp::make() → set_rx_freq/rate/gain
-        Ok(())
-    }
-
-    fn init_rtlsdr(&self) -> Result<()> {
-        info!("RTL-SDR: Opening device via librtlsdr");
-        // rtlsdr_open() → rtlsdr_set_center_freq/sample_rate/tuner_gain
-        Ok(())
-    }
-
-    fn init_limesdr(&self) -> Result<()> {
-        info!("LimeSDR: Opening device via LimeSuite");
-        // LMS_Open() → LMS_SetLOFrequency/SetSampleRate/SetGaindB
-        Ok(())
+        #[cfg(not(feature = "soapy"))]
+        {
+            // Stub device layer: logs the vendor FFI calls the real path
+            // would make. Build with `--features soapy` for hardware.
+            match self.config.device_type.as_str() {
+                "hackrf" | "bladerf" | "usrp" | "rtlsdr" | "limesdr" => {
+                    info!(
+                        "{}: stub device layer (build with --features soapy for real hardware)",
+                        self.config.device_type
+                    );
+                    Ok(())
+                }
+                other => anyhow::bail!("Unsupported SDR type: {}", other),
+            }
+        }
     }
 
     pub fn start_capture(&self, iq_pipe: Option<&PathBuf>) -> Result<()> {
@@ -223,7 +266,55 @@ impl SdrBridge {
 
         if let Some(path) = iq_pipe {
             info!("IQ data streaming to: {}", path.display());
-            // In production: write IQ samples to named pipe for srsRAN/gr-lte consumption
+            #[cfg(feature = "soapy")]
+            if let Some(device) = self.device.as_ref() {
+                // Real capture: a dedicated reader thread runs the
+                // readStream loop and writes raw CF32 (interleaved
+                // native-endian f32 I/Q) to the output file until stopped.
+                let device = std::sync::Arc::clone(device);
+                let stream = device.rx_stream().map_err(anyhow::Error::msg)?;
+                let running = self.running.clone();
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    use std::io::Write;
+                    let mut file = match std::fs::File::create(&path) {
+                        Ok(file) => file,
+                        Err(error) => {
+                            error!("cannot create IQ output {}: {error}", path.display());
+                            return;
+                        }
+                    };
+                    info!(
+                        "capturing CF32 IQ to {} ({} samples per read)",
+                        path.display(),
+                        stream.mtu()
+                    );
+                    let mut buffer = vec![0f32; stream.mtu() * 2];
+                    while *running.lock().expect("lock poisoned") {
+                        match device.read_into(&stream, &mut buffer, 1_000_000) {
+                            Ok(0) => continue, // timeout, keep going
+                            Ok(count) => {
+                                let bytes = unsafe {
+                                    std::slice::from_raw_parts(
+                                        buffer.as_ptr().cast::<u8>(),
+                                        count * 8,
+                                    )
+                                };
+                                if file.write_all(bytes).is_err() {
+                                    error!("IQ output write failed; stopping capture");
+                                    break;
+                                }
+                            }
+                            Err(error) => {
+                                error!("readStream failed: {error}; stopping capture");
+                                break;
+                            }
+                        }
+                    }
+                    info!("IQ capture thread stopped");
+                });
+            }
+            // Without the feature (or no device): documented stub, no RF.
         }
         Ok(())
     }
@@ -232,23 +323,61 @@ impl SdrBridge {
         info!("Scanning {} EARFCNs for cells...", earfcns.len());
         let mut results = Vec::new();
 
-        for &earfcn in earfcns {
-            let freq_hz = earfcn_to_freq(earfcn);
-            info!(
-                "  Scanning EARFCN {} ({}MHz)...",
-                earfcn,
-                freq_hz / 1_000_000
-            );
+        #[cfg(feature = "soapy")]
+        let measured: Option<Vec<(u32, f32)>> = match self.device.as_ref() {
+            Some(device) => {
+                // Real power scan: tune to each EARFCN, receive a burst of
+                // CF32 samples, measure wideband channel power. This is a
+                // physical-layer survey only — LTE PSS/SSS correlation and
+                // MIB/SIB decode are not implemented, so mib_decoded stays
+                // false and the measured power is reported honestly.
+                let stream = device.rx_stream().map_err(anyhow::Error::msg)?;
+                let mut measurements = Vec::with_capacity(earfcns.len());
+                const SAMPLES_PER_CHANNEL: usize = 65_536; // ~3ms at 20 Msps
+                for &earfcn in earfcns {
+                    let freq_hz = earfcn_to_freq(earfcn);
+                    if let Err(error) = device.set_frequency(crate::soapy::SOAPY_SDR_RX, freq_hz) {
+                        warn!("EARFCN {earfcn}: tune failed: {error}");
+                        continue;
+                    }
+                    match crate::soapy::receive(device, &stream, SAMPLES_PER_CHANNEL) {
+                        Ok(samples) => {
+                            let power = crate::soapy::power_dbfs(&samples);
+                            info!(
+                                "  EARFCN {} ({} MHz): measured {:.1} dBFS",
+                                earfcn,
+                                freq_hz / 1_000_000,
+                                power
+                            );
+                            measurements.push((earfcn, power));
+                        }
+                        Err(error) => warn!("EARFCN {earfcn}: receive failed: {error}"),
+                    }
+                }
+                Some(measurements)
+            }
+            None => None,
+        };
 
-            // In production: tune SDR → PSS/SSS correlation → MIB decode → SIB1 decode
-            // Returns cell info if found
+        for &earfcn in earfcns {
+            #[cfg(feature = "soapy")]
+            let (rsrp_dbm, mib_decoded) = match &measured {
+                Some(list) => match list.iter().find(|(e, _)| *e == earfcn) {
+                    Some((_, power)) => (*power, false),
+                    None => (f32::NEG_INFINITY, false),
+                },
+                None => (-999.0, false),
+            };
+            #[cfg(not(feature = "soapy"))]
+            let (rsrp_dbm, mib_decoded) = (-999.0, false);
+
             let result = CellScanResult {
                 earfcn,
                 pci: 0,
-                rsrp_dbm: -999.0,
+                rsrp_dbm,
                 rsrq_db: -99.0,
                 frequency_offset_hz: 0.0,
-                mib_decoded: false,
+                mib_decoded,
                 sib1_decoded: false,
                 mcc: None,
                 mnc: None,
@@ -326,6 +455,13 @@ impl SdrBridge {
     pub fn stop(&self) {
         *self.running.lock().expect("lock poisoned") = false;
         info!("SDR capture stopped");
+    }
+
+    /// The open SoapySDR device (real hardware), when built with the
+    /// `soapy` feature and a device is present.
+    #[cfg(feature = "soapy")]
+    pub fn device(&self) -> Option<&Arc<crate::soapy::SoapyDevice>> {
+        self.device.as_ref()
     }
 }
 
@@ -562,6 +698,27 @@ pub async fn run(cli: Cli) -> Result<()> {
     info!("  Sample rate: {} Msps", cli.sample_rate / 1_000_000);
     info!("  Mode: {}", cli.mode);
 
+    // Device enumeration: list attached SDRs (works with no hardware —
+    // an empty list is a valid, successful result) and exit.
+    if cli.mode == "list" {
+        #[cfg(feature = "soapy")]
+        {
+            let devices = crate::soapy::enumerate().map_err(anyhow::Error::msg)?;
+            println!("{}", serde_json::to_string_pretty(&devices)?);
+            info!(
+                "enumerated {} SoapySDR device(s) via libSoapySDR",
+                devices.len()
+            );
+            return Ok(());
+        }
+        #[cfg(not(feature = "soapy"))]
+        {
+            anyhow::bail!(
+                "--mode list requires real hardware support: rebuild with --features soapy (needs libSoapySDR)"
+            );
+        }
+    }
+
     // RF TX self-test: exercises the transmission pipeline (and, when
     // STATICZERO_SDR_TX=1 with the cabled HackRF→RTL-SDR loopback connected,
     // real RF over a cable) and exits instead of serving the control API.
@@ -604,33 +761,68 @@ pub async fn run(cli: Cli) -> Result<()> {
         mode,
     };
 
-    let bridge = Arc::new(SdrBridge::new(config));
+    let mut bridge = SdrBridge::new(config);
     bridge.init_device()?;
+    let bridge = Arc::new(bridge);
 
     if matches!(cli.mode.as_str(), "capture" | "relay") {
-        bridge.start_capture(cli.iq_output.as_ref())?;
+        let iq_output = cli.iq_output.clone();
+        bridge.start_capture(iq_output.as_ref())?;
+    }
+
+    // Real transmit: stream a CF32 IQ file over the configured frequency
+    // and gain. Requires the soapy feature and a TX-capable device.
+    if cli.mode == "inject" {
+        let path = cli
+            .iq_input
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("inject mode requires --iq-input <cf32-file>"))?;
+        let samples = read_cf32_file(path)?;
+        info!(
+            "Transmitting {} I/Q samples at {} MHz, gain {} dB",
+            samples.len() / 2,
+            cli.frequency / 1_000_000,
+            cli.gain
+        );
+        #[cfg(feature = "soapy")]
+        {
+            let device = bridge
+                .device()
+                .ok_or_else(|| anyhow::anyhow!("soapy feature built but no device open"))?;
+            let stream = device.tx_stream().map_err(anyhow::Error::msg)?;
+            crate::soapy::transmit(device, &stream, &samples).map_err(anyhow::Error::msg)?;
+            info!("Transmission complete");
+        }
+        #[cfg(not(feature = "soapy"))]
+        {
+            warn!(
+                "stub device layer: {} samples not transmitted (build with --features soapy for real TX)",
+                samples.len() / 2
+            );
+        }
     }
 
     if cli.mode == "scan" {
         let earfcns = lte_band_earfcns(cli.scan_bands.as_deref().unwrap_or("all-lte"));
         let results = bridge.scan_cells(&earfcns)?;
         info!(
-            "Scan complete: {} cells found",
-            results.iter().filter(|r| r.mib_decoded).count()
+            "Scan complete: {} channels measured, {} above the detection threshold",
+            results.len(),
+            results
+                .iter()
+                .filter(|r| r.rsrp_dbm > POWER_SCAN_THRESHOLD_DBFS)
+                .count()
         );
-        for r in &results {
-            if r.mib_decoded {
-                info!(
-                    "  EARFCN={} PCI={} RSRP={:.1}dBm MCC={} MNC={} TAC={} CID={}",
-                    r.earfcn,
-                    r.pci,
-                    r.rsrp_dbm,
-                    r.mcc.unwrap_or(0),
-                    r.mnc.unwrap_or(0),
-                    r.tac.unwrap_or(0),
-                    r.cell_id.unwrap_or(0)
-                );
-            }
+        for r in results
+            .iter()
+            .filter(|r| r.rsrp_dbm > POWER_SCAN_THRESHOLD_DBFS)
+        {
+            info!(
+                "  EARFCN={} ({} MHz) measured={:.1} dBFS",
+                r.earfcn,
+                earfcn_to_freq(r.earfcn) / 1_000_000,
+                r.rsrp_dbm
+            );
         }
     }
 

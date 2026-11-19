@@ -1,6 +1,6 @@
 [package]
 name = "staticzero-tools"
-version = "0.7.0"
+version = "0.7.1"
 license = "MIT"
 edition = "2021"
 description = "SDR integration, modem firmware analysis, and lab automation tools for StaticZero"

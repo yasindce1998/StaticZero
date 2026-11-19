@@ -130,6 +130,11 @@ cases in TR 22.870) with ~2028–2030 commercialization:
   environment; cellular radar as a tracking side channel is a
   first-class privacy concern in TR 22.870 use cases (**F200**).
 
+Modules 66, 67, and 70 are exercisable today via simulation traces: the
+`6g-sim` tool ingests JSON-lines control-plane events from
+Colosseum-class testbeds (or its own `generate` scenarios) and emits the
+`airan`/`pqc`/`noncred` verdicts the defense adapters consume.
+
 ## Tools
 
 | Tool | Purpose | Basis |
@@ -137,6 +142,7 @@ cases in TR 22.870) with ~2028–2030 commercialization:
 | `osnma-verify` | Cryptographic GNSS spoofing detection | Galileo OSNMA SIS ICD; operational since 2025; HMAC-SHA256 per RFC 2104 validated against RFC 4231 vectors |
 | `d2c-monitor` | Spoofed satellite-cell detection | SIGCOMM 2025 D2C measurements; TS 38.213 timing advance limits; LEO doppler physics |
 | `mlo-analyzer` | Wi-Fi 7 MLO attack detection | 802.11be key hierarchy and per-link separation requirements |
+| `6g-sim` | 6G control-plane trace analysis (AI-RAN integrity, PQC downgrade, non-credential abuse) | Release 20 study attack surfaces; simulation-based validation pending real 6G stacks |
 | E2AP dissector | O-RAN RIC E2 parsing | O-RAN.WG3.E2AP |
 | F1AP dissector | CU/DU split parsing | 3GPP TS 38.423 |
 

@@ -33,6 +33,10 @@ path = "src/d2c_monitor.rs"
 name = "mlo-analyzer"
 path = "src/mlo_analyzer.rs"
 
+[[bin]]
+name = "6g-sim"
+path = "src/sixg_sim.rs"
+
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

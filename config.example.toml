@@ -20,8 +20,9 @@ telecom_advanced = false
 # (--telecom-5g-defense, --satellite-defense, --rf-defense,
 # --nextgen-wifi-defense, --d2c-defense, --secure-ranging-defense,
 # --nextgen-iot-defense, --sixg-defense) or --all.
-# Modules 56/61/62 are userspace tool adapters: feed their verdict streams
-# with --tool-input mlo|d2c|osnma=PATH ("-" for stdin).
+# Modules 56/61/62 and 66/67/70 are userspace tool adapters: feed their
+# verdict streams with --tool-input mlo|d2c|osnma|airan|pqc|noncred=PATH
+# ("-" for stdin; the airan/pqc/noncred kinds are fed by the 6g-sim tool).
 
 # Emit alerts as JSON lines (for SIEM/pipeline ingestion)
 json_output = false

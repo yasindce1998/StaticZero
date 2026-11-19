@@ -66,7 +66,8 @@ struct Cli {
 
     /// Feed a next-gen tool verdict stream into the pipeline:
     /// KIND=PATH with KIND one of mlo (Module 56), d2c (Module 61),
-    /// or osnma (Module 62). PATH is a followed JSON-lines file, or - for stdin.
+    /// osnma (Module 62), airan (Module 66), pqc (Module 67), or noncred
+    /// (Module 70). PATH is a followed JSON-lines file, or - for stdin.
     #[arg(long = "tool-input", value_name = "KIND=PATH")]
     tool_inputs: Vec<String>,
 

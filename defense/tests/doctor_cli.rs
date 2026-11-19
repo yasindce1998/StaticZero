@@ -133,3 +133,33 @@ fn invalid_tool_input_kind_is_rejected() {
         .unwrap()
         .contains("unknown tool kind"));
 }
+
+#[test]
+fn sixg_tool_inputs_activate_their_modules() {
+    let verdicts = std::env::temp_dir().join("staticzero-sixg-doctor-test.jsonl");
+    std::fs::write(&verdicts, "\n").expect("write temp verdict file");
+    let output = Command::new(env!("CARGO_BIN_EXE_staticzero-defense"))
+        .args(["--doctor", "--json", "--modules", "66,67,70"])
+        .args([
+            "--tool-input",
+            &format!("airan={}", verdicts.display()),
+            "--tool-input",
+            &format!("pqc={}", verdicts.display()),
+            "--tool-input",
+            &format!("noncred={}", verdicts.display()),
+        ])
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_file(&verdicts);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("doctor prints its JSON report even when the preflight fails");
+    let modules = report["modules"].as_array().unwrap();
+    assert_eq!(modules.len(), 3);
+    for module in modules {
+        assert_eq!(module["status"], "available", "module {module:?}");
+        assert!(module["detail"]
+            .as_str()
+            .unwrap()
+            .contains("6g-sim verdicts"));
+    }
+}

@@ -672,6 +672,8 @@ sudo staticzero-defense \
 3. Feed captured frames to mlo-analyzer (`./target/release/mlo-analyzer < mlo_frames.jsonl`)
 4. Activate Feature F173 (MLO Link Desynchronization) to tear down a single link
 5. Verify Module 56 detects key/link mismatch: ALERT_MLO_INTEGRITY
+6. Pipe the analyzer output into the defense engine (`./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-`)
+7. Verify the alert surfaces via the HTTP API / JSON output
 
 ### Scenario 13: D2C Cell Spoof Detection
 
@@ -681,6 +683,8 @@ sudo staticzero-defense \
 4. Verify Module 61 detects physics inconsistency: ALERT_D2C_CELL_SPOOF
 5. Combine with Feature F92 (IMSI catching) for satellite-grade IMSI catcher test
 6. Confirm correlation with Module 18 into `D2cCellSpoofing` compound threat
+7. Pipe the monitor output into the defense engine (`./target/release/d2c-monitor < reports.jsonl | sudo ./target/release/staticzero-defense --modules 61 --tool-input d2c=-`)
+8. Verify the alert surfaces via the HTTP API / JSON output
 
 ### Scenario 14: OSNMA Bypass / LEO PNT Spoof
 
@@ -691,6 +695,8 @@ sudo staticzero-defense \
 5. Activate Feature F182 (LEO PNT Signal Spoofing) for Xona-class PNT forgery
 6. Verify Module 68 detects signal anomaly: ALERT_LEO_PNT
 7. Confirm correlation into `GnssSpoofing` compound threat
+8. Pipe the verifier output into the defense engine (`./target/release/osnma-verify verify < records.jsonl | sudo ./target/release/staticzero-defense --modules 62 --tool-input osnma=-`)
+9. Verify the alert surfaces via the HTTP API / JSON output
 
 ### Scenario 15: Matter Passcode Attack
 

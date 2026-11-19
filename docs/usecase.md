@@ -151,21 +151,21 @@ Test vehicle remote keyless entry systems for replay and relay vulnerabilities.
 Evaluate MLO key separation, link desynchronization, and coordination attacks against Wi-Fi 7 infrastructure.
 
 **Actors:** Enterprise WLAN vendors, Wi-Fi Alliance members, corporate security teams  
-**Scenario:** Deploy F173 (MLO Link Desync) and F174 (MLO Key Abuse) in an isolated RF lab with a Wi-Fi 7 AP. Use `mlo-analyzer` on captured frame records. Validate Module 56 (MLO Integrity Monitor) detects key-generation mismatches and sequence regression across the MLD's links.
+**Scenario:** Deploy F173 (MLO Link Desync) and F174 (MLO Key Abuse) in an isolated RF lab with a Wi-Fi 7 AP. Use `mlo-analyzer` on captured frame records. Validate Module 56 (MLO Integrity Monitor) detects key-generation mismatches and sequence regression across the MLD's links. Pipe the analyzer into the defense engine (`./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-`) to activate Module 56 as a live userspace tool adapter.
 
 ### 20. Satellite Direct-to-Cell Impersonation Research
 
 Research spoofed satellite cells against D2C-capable handsets (Starlink D2C, AST SpaceMobile, Skylo).
 
 **Actors:** MNO satellite divisions, handset vendors, defense agencies  
-**Scenario:** Use `d2c-monitor` to score observed cells for physics consistency (timing advance, doppler, ephemeris). Deploy F180 (D2C Cell Spoof) in a shielded lab with test UEs. Validate Module 61 flags satellite-indicated cells with terrestrial parameters, and that correlation with Module 18 (IMSI Catcher) produces the `D2cCellSpoofing` threat.
+**Scenario:** Use `d2c-monitor` to score observed cells for physics consistency (timing advance, doppler, ephemeris). Deploy F180 (D2C Cell Spoof) in a shielded lab with test UEs. Validate Module 61 flags satellite-indicated cells with terrestrial parameters, and that correlation with Module 18 (IMSI Catcher) produces the `D2cCellSpoofing` threat. Pipe the monitor into the defense engine (`./target/release/d2c-monitor < reports.jsonl | sudo ./target/release/staticzero-defense --modules 61 --tool-input d2c=-`) to activate Module 61 as a live userspace tool adapter.
 
 ### 21. GNSS Authentication Verification (Galileo OSNMA)
 
 Cryptographically verify Galileo navigation messages and detect spoofing beyond C/N0 heuristics.
 
 **Actors:** PNT researchers, critical-infrastructure operators, aviation/maritime authorities  
-**Scenario:** Run `osnma-verify` against captured I/NAV OSNMA records (self-test first with `osnma-verify selftest`). Validate Module 62 ingests OSNMA failure verdicts and that OSNMA failure + LEO PNT anomaly (Module 68) correlates into the `GnssSpoofing` threat.
+**Scenario:** Run `osnma-verify` against captured I/NAV OSNMA records (self-test first with `osnma-verify selftest`). Validate Module 62 ingests OSNMA failure verdicts and that OSNMA failure + LEO PNT anomaly (Module 68) correlates into the `GnssSpoofing` threat. Pipe the verifier into the defense engine (`./target/release/osnma-verify verify < records.jsonl | sudo ./target/release/staticzero-defense --modules 62 --tool-input osnma=-`) to activate Module 62 as a live userspace tool adapter.
 
 ### 22. Smart Home Matter Commissioning Audit
 
@@ -350,6 +350,30 @@ sudo ./target/release/staticzero-defense --sixg_defense
 ./target/release/d2c-monitor < cells.jsonl    # spoofed satellite cell scoring
 ./target/release/mlo-analyzer < frames.jsonl  # Wi-Fi 7 MLO attack findings
 ```
+
+### Feeding Tool Verdicts into the Defense Engine
+
+Defense Modules 56 (Wi-Fi 7 MLO Integrity), 61 (D2C Satellite Cell
+Verification), and 62 (GNSS Authentication Monitor/OSNMA) are driven by
+userspace tool verdicts instead of kernel eBPF probes. The daemon accepts
+`--tool-input KIND=PATH` (repeatable), where KIND is `mlo` (Module 56, fed by
+`mlo-analyzer`), `d2c` (Module 61, fed by `d2c-monitor`), or `osnma`
+(Module 62, fed by `osnma-verify`). PATH is a JSON-lines verdict file that is
+followed for appends, or `-` for stdin:
+
+```bash
+# Pipe mlo-analyzer verdicts into Module 56 via stdin
+./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-
+
+# Follow a d2c-monitor verdict file for Module 61
+sudo ./target/release/staticzero-defense --d2c_defense --tool-input d2c=/var/log/d2c-monitor.jsonl
+```
+
+Tool-sourced alerts flow through the full pipeline — metrics, SQLite
+persistence, correlation engine, and HTTP API — exactly like eBPF alerts.
+`--tool-input` also works with `--doctor`: the module shows as available when
+its input is configured and readable, and failed when the configured path is
+unreadable.
 
 ### Configuration File
 

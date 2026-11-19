@@ -13,8 +13,11 @@ eBPF-based telecom security research framework covering 2G through 5G, non-terre
 
 > **Implementation status:** The capability tables are a research catalog, not
 > proof of working live interception/detection. Defense Module 22 has an
-> experimental passive `openat` adapter; Modules 16–21 and 23–70 currently lack
-> validated attachment adapters and are reported as unsupported by the loader.
+> experimental passive `openat` adapter; Modules 56, 61, and 62 have validated
+> userspace tool adapters (mlo-analyzer / d2c-monitor / osnma-verify verdict
+> streams via `--tool-input`); the remaining modules (16–21, 23–55, 57–60,
+> 63–70) currently lack validated attachment adapters and are reported as
+> unsupported by the loader.
 > SDR hardware methods also include scaffolding. Lab-tier smoke tests cover
 > offensive kprobe attachment, XDP/TC traffic-path probes, real modem device
 > nodes, and the sdr-bridge TX pipeline — see
@@ -363,13 +366,13 @@ staticzero/
 
 | # | Module | Detection Method |
 |---|--------|-----------------|
-| 56 | Wi-Fi 6/7 MLO Integrity Monitor | Per-link key generation mismatch, link sequence desync, AKM inconsistency |
+| 56 | Wi-Fi 6/7 MLO Integrity Monitor | Per-link key generation mismatch, link sequence desync, AKM inconsistency — userspace adapter via mlo-analyzer |
 | 57 | UWB/BT CS Secure Ranging Anomaly | STS failures, ToF vs claimed geometry, BT CS phase anomalies |
 | 58 | Matter Commissioning Anomaly | Passcode attempt bursts, ACL version regression, pre-auth patterns |
 | 59 | Ambient IoT Device Identity Anomaly | Duplicate batteryless IDs with divergent power, clone fingerprints |
 | 60 | DECT-2020 NR Mesh Integrity | Rogue relay joins, cluster param changes, unauthenticated mesh frames |
-| 61 | D2C Satellite Cell Verification | Terrestrial timing advance on satellite cell, missing ephemeris, doppler mismatch |
-| 62 | GNSS Authentication Monitor (OSNMA) | Galileo OSNMA tesla chain failures, SAS verdicts, I/NAV inconsistencies |
+| 61 | D2C Satellite Cell Verification | Terrestrial timing advance on satellite cell, missing ephemeris, doppler mismatch — userspace adapter via d2c-monitor |
+| 62 | GNSS Authentication Monitor (OSNMA) | Galileo OSNMA tesla chain failures, SAS verdicts, I/NAV inconsistencies — userspace adapter via osnma-verify |
 | 63 | NTN Regenerative Payload Anomaly | Feeder-link NGAP from unregistered gNB-on-board, ephemeris/TA mismatch |
 | 64 | Wi-Fi Sensing Privacy Guard (802.11bf) | 802.11bf sensing poll floods, unsolicited measurement requests |
 | 65 | FRMCS/LDACS Transport Signaling Integrity | Train/aircraft signaling from unauthorized sources, procedure violations |
@@ -489,6 +492,10 @@ sudo ./target/release/staticzero-offense --enable-nextgen-wifi --enable-d2c --en
 ./target/release/osnma-verify selftest
 ./target/release/d2c-monitor < reports.jsonl
 ./target/release/mlo-analyzer < mlo_frames.jsonl
+
+# Feed tool verdicts into the defense engine (Modules 56/61/62)
+./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-
+sudo ./target/release/staticzero-defense --d2c_defense --tool-input d2c=/var/log/d2c-monitor.jsonl
 
 # Lab-tier smoke tests: offensive probes, traffic path, real modem devices,
 # RF TX pipeline (see docs/LAB_SMOKE_TESTS.md)

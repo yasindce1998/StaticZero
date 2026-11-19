@@ -20,6 +20,8 @@ telecom_advanced = false
 # (--telecom-5g-defense, --satellite-defense, --rf-defense,
 # --nextgen-wifi-defense, --d2c-defense, --secure-ranging-defense,
 # --nextgen-iot-defense, --sixg-defense) or --all.
+# Modules 56/61/62 are userspace tool adapters: feed their verdict streams
+# with --tool-input mlo|d2c|osnma=PATH ("-" for stdin).
 
 # Emit alerts as JSON lines (for SIEM/pipeline ingestion)
 json_output = false

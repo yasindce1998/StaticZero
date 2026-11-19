@@ -5,6 +5,7 @@
 //! intelligence with MITRE ATT&CK mappings. Provides an HTTP API for metrics,
 //! alert history, and operator feedback.
 
+pub mod adapters;
 pub mod adaptive;
 pub mod bus;
 pub mod config;

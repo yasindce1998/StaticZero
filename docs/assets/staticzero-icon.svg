@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="StaticZero logo">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1526"/>
+      <stop offset="1" stop-color="#050810"/>
+    </linearGradient>
+    <linearGradient id="zero" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#4ade80"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11283f"/>
+      <stop offset="1" stop-color="#081522"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.1"/>
+      <stop offset="0.5" stop-color="#22d3ee" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#4ade80" stop-opacity="0.3"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- shield: pointy-top hexagon centered (256,256) R=196 -->
+  <g filter="url(#glow)">
+    <polygon points="256,60 426,158 426,354 256,452 86,354 86,158"
+             fill="url(#shield)" stroke="#22d3ee" stroke-width="6"/>
+    <polygon points="256,94 397,175 397,337 256,418 115,337 115,175"
+             fill="none" stroke="#164e63" stroke-width="3" stroke-opacity="0.8"/>
+  </g>
+
+  <!-- signal arcs from core -->
+  <g fill="none" stroke="#4ade80" stroke-linecap="round" filter="url(#glow)">
+    <path d="M 222 282 A 44 44 0 0 1 290 282" stroke-width="7"/>
+    <path d="M 198 308 A 74 74 0 0 1 314 308" stroke-width="7" stroke-opacity="0.75"/>
+    <path d="M 174 334 A 104 104 0 0 1 338 334" stroke-width="7" stroke-opacity="0.5"/>
+  </g>
+  <!-- core -->
+  <circle cx="256" cy="256" r="15" fill="#4ade80" filter="url(#glow)"/>
+
+  <!-- orbit + satellite -->
+  <g filter="url(#glow)">
+    <ellipse cx="256" cy="256" rx="232" ry="86" fill="none" stroke="url(#orbit)"
+             stroke-width="4" transform="rotate(-24 256 256)"/>
+  </g>
+  <g transform="translate(465 166) rotate(-24)">
+    <rect x="-23" y="-8" width="46" height="16" rx="3" fill="#22d3ee"/>
+    <rect x="-40" y="-15" width="13" height="30" rx="2" fill="#67e8f9"/>
+    <rect x="27" y="-15" width="13" height="30" rx="2" fill="#67e8f9"/>
+  </g>
+
+  <!-- circuit traces -->
+  <g fill="none" stroke="#22d3ee" stroke-opacity="0.5" stroke-width="2.5">
+    <polyline points="86,158 46,158 46,110"/>
+    <polyline points="86,354 46,354 46,402"/>
+    <polyline points="426,158 466,158 466,110"/>
+    <polyline points="426,354 466,354 466,402"/>
+  </g>
+  <g fill="#22d3ee" fill-opacity="0.8">
+    <circle cx="46" cy="106" r="5"/><circle cx="46" cy="406" r="5"/>
+    <circle cx="466" cy="106" r="5"/><circle cx="466" cy="406" r="5"/>
+  </g>
+
+  <!-- accent underline -->
+  <rect x="176" y="470" width="160" height="7" rx="3.5" fill="url(#zero)" fill-opacity="0.8"/>
+</svg>

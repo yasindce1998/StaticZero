@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" role="img" aria-label="StaticZero — eBPF telecom security research">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1526"/>
+      <stop offset="1" stop-color="#050810"/>
+    </linearGradient>
+    <linearGradient id="zero" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#4ade80"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11283f"/>
+      <stop offset="1" stop-color="#081522"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.1"/>
+      <stop offset="0.5" stop-color="#22d3ee" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#4ade80" stop-opacity="0.3"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="320" rx="26" fill="url(#bg)"/>
+
+  <!-- faint hex mesh -->
+  <g fill="none" stroke="#1e3a5f" stroke-opacity="0.35" stroke-width="1">
+    <path d="M1040 40 l34 20 v40 l-34 20 -34 -20 v-40 z"/>
+    <path d="M1108 80 l34 20 v40 l-34 20 -34 -20 v-40 z"/>
+    <path d="M1040 120 l34 20 v40 l-34 20 -34 -20 v-40 z"/>
+    <path d="M1074 200 l34 20 v40 l-34 20 -34 -20 v-40 z"/>
+    <path d="M1006 240 l34 20 v40 l-34 20 -34 -20 v-40 z" stroke-opacity="0.2"/>
+  </g>
+
+  <!-- shield: pointy-top hexagon centered (190,160) R=118 -->
+  <g filter="url(#glow)">
+    <polygon points="190,42 292,101 292,219 190,278 88,219 88,101"
+             fill="url(#shield)" stroke="#22d3ee" stroke-width="3"/>
+    <polygon points="190,62 275,111 275,209 190,258 105,209 105,111"
+             fill="none" stroke="#164e63" stroke-width="1.5" stroke-opacity="0.8"/>
+  </g>
+
+  <!-- signal arcs from core -->
+  <g fill="none" stroke="#4ade80" stroke-linecap="round" filter="url(#glow)">
+    <path d="M 170 175 A 26 26 0 0 1 210 175" stroke-width="4"/>
+    <path d="M 156 190 A 44 44 0 0 1 224 190" stroke-width="4" stroke-opacity="0.75"/>
+    <path d="M 142 205 A 62 62 0 0 1 238 205" stroke-width="4" stroke-opacity="0.5"/>
+  </g>
+  <!-- core -->
+  <circle cx="190" cy="160" r="9" fill="#4ade80" filter="url(#glow)"/>
+
+  <!-- orbit + satellite -->
+  <g filter="url(#glow)">
+    <ellipse cx="190" cy="160" rx="140" ry="52" fill="none" stroke="url(#orbit)"
+             stroke-width="2.5" transform="rotate(-24 190 160)"/>
+  </g>
+  <g transform="translate(316 100) rotate(-24)">
+    <rect x="-14" y="-5" width="28" height="10" rx="2" fill="#22d3ee"/>
+    <rect x="-24" y="-9" width="8" height="18" rx="1.5" fill="#67e8f9"/>
+    <rect x="16" y="-9" width="8" height="18" rx="1.5" fill="#67e8f9"/>
+  </g>
+
+  <!-- circuit traces -->
+  <g fill="none" stroke="#22d3ee" stroke-opacity="0.5" stroke-width="1.5">
+    <polyline points="88,101 60,101 60,73"/>
+    <polyline points="88,219 60,219 60,247"/>
+    <polyline points="292,101 320,101 320,73"/>
+    <polyline points="292,219 320,219 320,247"/>
+  </g>
+  <g fill="#22d3ee" fill-opacity="0.8">
+    <circle cx="60" cy="70" r="3"/><circle cx="60" cy="250" r="3"/>
+    <circle cx="320" cy="70" r="3"/><circle cx="320" cy="250" r="3"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="392" y="182" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
+        font-size="96" font-weight="700" fill="#f8fafc" letter-spacing="1">Static</text>
+  <text x="672" y="182" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
+        font-size="96" font-weight="700" fill="url(#zero)" letter-spacing="1">Zero</text>
+
+  <!-- tagline -->
+  <text x="396" y="232" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
+        font-size="26" fill="#94a3b8" letter-spacing="2">eBPF TELECOM SECURITY RESEARCH — 2G TO 6G</text>
+
+  <!-- accent underline -->
+  <rect x="396" y="252" width="424" height="4" rx="2" fill="url(#zero)" fill-opacity="0.7"/>
+</svg>

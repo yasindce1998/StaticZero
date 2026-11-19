@@ -101,6 +101,10 @@ jobs:
           cp target/${{ matrix.target }}/release/modem-firmware dist/modem-firmware-linux-${{ matrix.arch }}
           cp target/${{ matrix.target }}/release/sdr-bridge dist/sdr-bridge-linux-${{ matrix.arch }}
           cp target/${{ matrix.target }}/release/protocol-correlator dist/protocol-correlator-linux-${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/osnma-verify dist/osnma-verify-linux-${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/d2c-monitor dist/d2c-monitor-linux-${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/mlo-analyzer dist/mlo-analyzer-linux-${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/6g-sim dist/6g-sim-linux-${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -117,7 +121,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: binaries-*
-          merge-multiple: true
           path: dist
           merge-multiple: true
 

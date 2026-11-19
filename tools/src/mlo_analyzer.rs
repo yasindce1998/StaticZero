@@ -207,18 +207,22 @@ impl MloAnalyzer {
     }
 }
 
+/// Command-line interface for `mlo-analyzer`. Usable standalone (the thin
+/// `src/bin/mlo-analyzer.rs` wrapper) or as a subcommand of the multi-call
+/// `staticzero` binary.
 #[derive(Parser, Debug)]
 #[command(
     name = "mlo-analyzer",
     about = "Wi-Fi 7 Multi-Link Operation analyzer — link desync, key separation abuse, suite mismatch, flapping"
 )]
-struct Cli {
+pub struct Cli {
     /// Input file with one MloLinkRecord JSON object per line (stdin if omitted)
     input: Option<String>,
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+/// Entry point invoked by the `mlo-analyzer` bin and the multi-call
+/// `staticzero` binary's `mlo-analyzer` subcommand.
+pub fn run(cli: Cli) -> Result<()> {
     let stdin = std::io::stdin();
     let reader: Box<dyn BufRead> = match cli.input {
         Some(path) => Box::new(BufReader::new(

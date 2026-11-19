@@ -10,7 +10,7 @@ use tracing::{info, warn};
 #[derive(Debug, Parser)]
 #[command(name = "modem-firmware")]
 #[command(about = "Modem Firmware Analysis — extract, patch, and analyze baseband images")]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     command: Commands,
 
@@ -1062,10 +1062,9 @@ fn detect_security_level(data: &[u8]) -> SecurityLevel {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
-
+/// Entry point invoked by the standalone bin and the multi-call
+/// `staticzero` binary's subcommand.
+pub async fn run(cli: Cli) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {

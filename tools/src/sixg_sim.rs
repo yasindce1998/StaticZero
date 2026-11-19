@@ -266,12 +266,15 @@ impl Scenario {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
+/// Command-line interface for `6g-sim`. Usable standalone (the thin
+/// `src/bin/6g-sim.rs` wrapper) or as a subcommand of the multi-call
+/// `staticzero` binary.
 #[derive(Parser, Debug)]
 #[command(
     name = "6g-sim",
     about = "6G control-plane trace analyzer — AI-RAN model integrity, PQC downgrade, and network-of-networks credential verdicts for the defense engine"
 )]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     command: Command,
 }
@@ -291,8 +294,9 @@ enum Command {
     },
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+/// Entry point invoked by the `6g-sim` bin and the multi-call `staticzero`
+/// binary's `6g-sim` subcommand.
+pub fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Analyze { input } => {
             let stdin = std::io::stdin();

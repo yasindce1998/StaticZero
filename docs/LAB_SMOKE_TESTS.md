@@ -118,12 +118,15 @@ energy) is a hard failure.
 
 ```bash
 cargo xtask build-ebpf --release
-cargo build --release -p staticzero-defense -p staticzero-offense --features ebpf-bin
+cargo build --release -p staticzero --features ebpf-bin
 bash scripts/tool_adapter_smoke.sh
 ```
 
-Runs the actual defense and offense binaries against the real kernel, in two
-parts, on an isolated dummy interface (`sz-smoke0`):
+Dogfoods the multi-call `staticzero` binary against the real kernel — the
+`defense` and `offense` subcommands, plus a legacy argv[0] dispatch check (a
+symlink under a legacy name like `staticzero-defense` must route to the
+matching subcommand) — in two parts, on an isolated dummy interface
+(`sz-smoke0`):
 
 **Defense part** proves the userspace tool-adapter pipeline end-to-end:
 

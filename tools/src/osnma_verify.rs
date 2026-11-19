@@ -303,12 +303,15 @@ pub fn verify_record(record: &OsnmaRecord) -> OsnmaVerdict {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
+/// Command-line interface for `osnma-verify`. Usable standalone (the thin
+/// `src/bin/osnma-verify.rs` wrapper) or as a subcommand of the multi-call
+/// `staticzero` binary.
 #[derive(Parser, Debug)]
 #[command(
     name = "osnma-verify",
     about = "Galileo OSNMA verification — cryptographic GNSS spoofing detection"
 )]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     command: Command,
 }
@@ -324,8 +327,9 @@ enum Command {
     Selftest,
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+/// Entry point invoked by the `osnma-verify` bin and the `staticzero`
+/// multi-call binary's `osnma-verify` subcommand.
+pub fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Verify { input } => {
             let stdin = std::io::stdin();

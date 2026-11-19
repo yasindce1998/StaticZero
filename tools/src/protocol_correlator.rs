@@ -13,7 +13,7 @@ use tracing::{info, warn};
 #[derive(Debug, Parser)]
 #[command(name = "protocol-correlator")]
 #[command(about = "Cross-layer protocol correlation engine for telecom threat detection")]
-struct Cli {
+pub struct Cli {
     /// Listen port for event ingestion (JSON lines over TCP)
     #[arg(long, default_value = "7892")]
     ingest_port: u16,
@@ -340,10 +340,9 @@ struct EngineStats {
     window_ms: u64,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
-
+/// Entry point invoked by the standalone bin and the multi-call
+/// `staticzero` binary's subcommand.
+pub async fn run(cli: Cli) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

@@ -75,44 +75,50 @@ the tool-adapter pipeline end-to-end, and ring-buffer event delivery —
 
 ## Quick start
 
-Grab a [release binary](https://github.com/yasindce1998/StaticZero/releases/latest)
-(amd64/arm64, self-contained with embedded eBPF), or build from source:
+Grab a [release](https://github.com/yasindce1998/StaticZero/releases/latest) —
+ONE multi-call binary (~12 MB, `staticzero-linux-amd64` /
+`staticzero-linux-arm64`, self-contained with embedded eBPF) that runs the
+defense engine, the offense loader, and every tool as subcommands — or build
+from source:
 
 ```bash
-cargo xtask build-ebpf --release
-cargo build --release -p staticzero-defense -p staticzero-offense --features ebpf-bin
-cargo build --release -p staticzero-tools
+cargo xtask build-ebpf --release && cargo build --release -p staticzero --features ebpf-bin
 ```
 
 ```bash
 # Inspect what will attach on this kernel — read-only, no privileges needed
-./target/release/staticzero-defense --doctor --all
+staticzero defense --doctor --all
 
 # Run the defense engine (authorized lab only)
-sudo ./target/release/staticzero-defense --all
+sudo staticzero defense --all
 
 # Feed live tool verdicts into the correlation engine (Modules 56/66/67)
-./target/release/6g-sim generate --scenario ai-ran-tamper | ./target/release/6g-sim analyze \
-  | sudo ./target/release/staticzero-defense --modules 66,67 --tool-input airan=- --tool-input pqc=-
+staticzero 6g-sim generate --scenario ai-ran-tamper | staticzero 6g-sim analyze \
+  | sudo staticzero defense --modules 66,67 --tool-input airan=- --tool-input pqc=-
 
 # Run the offense loader (authorized testing only). Missing kernel hook
 # points and interface conflicts disable one feature, never the loader.
-sudo ./target/release/staticzero-offense --enable-telecom --gtp-iface gtp0
+sudo staticzero offense --enable-telecom --gtp-iface gtp0
 ```
 
 ## The toolbelt
 
 | Tool | What it does |
 |---|---|
-| `staticzero-defense` | Detection engine: eBPF probes + userspace tool adapters + correlation, with HTTP API and JSON/SIEM output |
-| `staticzero-offense` | eBPF offense loader for authorized red-team research (112 features) |
-| `osnma-verify` | **Galileo OSNMA cryptographic spoofing detection** — TESLA key chains and MACs with in-tree HMAC-SHA256 |
-| `d2c-monitor` | Flags **spoofed satellite cells** (Starlink D2C / AST / Skylo) by physics: timing advance, doppler, ephemeris |
-| `mlo-analyzer` | Detects **Wi-Fi 7 MLO attacks**: link desync, key separation abuse, AKM mismatch, flapping |
-| `6g-sim` | 6G control-plane trace analyzer + scenario generator (AI-RAN integrity, PQC downgrade, credential crossing) |
-| `sdr-bridge` | Hardware-abstracted SDR control (HackRF, bladeRF, USRP, RTL-SDR, LimeSDR) with a JSON API |
-| `modem-firmware` | Baseband firmware analyzer |
-| `protocol-correlator` | Cross-layer protocol correlation over captured traces |
+| `staticzero defense` | Detection engine: eBPF probes + userspace tool adapters + correlation, with HTTP API and JSON/SIEM output |
+| `staticzero offense` | eBPF offense loader for authorized red-team research (112 features) |
+| `staticzero osnma-verify` | **Galileo OSNMA cryptographic spoofing detection** — TESLA key chains and MACs with in-tree HMAC-SHA256 |
+| `staticzero d2c-monitor` | Flags **spoofed satellite cells** (Starlink D2C / AST / Skylo) by physics: timing advance, doppler, ephemeris |
+| `staticzero mlo-analyzer` | Detects **Wi-Fi 7 MLO attacks**: link desync, key separation abuse, AKM mismatch, flapping |
+| `staticzero 6g-sim` | 6G control-plane trace analyzer + scenario generator (AI-RAN integrity, PQC downgrade, credential crossing) |
+| `staticzero sdr-bridge` | Hardware-abstracted SDR control (HackRF, bladeRF, USRP, RTL-SDR, LimeSDR) with a JSON API |
+| `staticzero modem-firmware` | Baseband firmware analyzer |
+| `staticzero protocol-correlator` | Cross-layer protocol correlation over captured traces |
+
+All of the above ship as **one multi-call binary**: `staticzero <subcommand>`.
+Legacy names still work via symlinks/argv[0] (busybox-style) — a symlink named
+`staticzero-defense` routes to the `defense` subcommand, so existing scripts
+keep working against the single downloaded file.
 
 Protocol dissectors included: **PFCP** (TS 29.244), **NGAP** (TS 38.413),
 **XnAP** (TS 38.423), **E2AP** (O-RAN.WG3), **F1AP** (TS 38.470/38.473).
@@ -542,6 +548,7 @@ staticzero/
 ├── defense-ebpf/     # Kernel-space telecom detection eBPF probes
 ├── defense/          # User-space detection engine + correlation library
 ├── tools/            # SDR bridge, modem firmware analyzer, protocol correlator
+├── cli/              # Multi-call staticzero binary (defense, offense, all tools as subcommands)
 ├── docs/             # Threat model, lab setup guides
 └── scripts/          # Lab automation
 ```
@@ -559,51 +566,52 @@ staticzero/
 # Build eBPF programs
 cargo xtask build-ebpf --release
 
-# Build user-space. The defense/offense binaries embed the eBPF objects
+# Build the multi-call user-space binary. It embeds the eBPF objects
 # (self-contained releases); plain `cargo build` builds libraries and the
-# tools crate only.
-cargo build --release
-cargo build --release -p staticzero-defense --features ebpf-bin
-cargo build --release -p staticzero-offense --features ebpf-bin
+# tools crate only. Development builds still produce the standalone legacy
+# binaries (cargo build --release -p staticzero-defense -p staticzero-offense
+# --features ebpf-bin, cargo build --release -p staticzero-tools, ...) —
+# releases only ship the multi-call `staticzero` binary.
+cargo build --release -p staticzero --features ebpf-bin
 
 # Inspect supported/unsupported modules without loading or attaching BPF
-./target/release/staticzero-defense --doctor --all
+./target/release/staticzero defense --doctor --all
 
 # Run defense engine (only supported adapters attach; see validation guide)
-sudo ./target/release/staticzero-defense --all
+sudo ./target/release/staticzero defense --all
 
 # Run offense loader (authorized testing only). Missing kernel hook points
 # (e.g. sdr_rx_callback) and interface conflicts disable that one feature
 # instead of crashing. The kernel allows one XDP program per interface —
 # use dedicated interfaces (--sdr-iface/--wpan-iface/...) per XDP feature.
-sudo ./target/release/staticzero-offense --enable-telecom --gtp-iface gtp0
+sudo ./target/release/staticzero offense --enable-telecom --gtp-iface gtp0
 
 # Run with satellite modules
-sudo ./target/release/staticzero-defense --satellite_defense
-sudo ./target/release/staticzero-offense --enable-satellite --sat-iface sat0
+sudo ./target/release/staticzero defense --satellite_defense
+sudo ./target/release/staticzero offense --enable-satellite --sat-iface sat0
 
 # Run with RF protocol domain modules (TETRA/P25, BLE, Zigbee, LoRaWAN, WiFi, RKE, UAV, paging, broadcast, O-RAN, AIS)
-sudo ./target/release/staticzero-defense --rf_defense
-sudo ./target/release/staticzero-offense --enable-rf --sdr-iface sdr0 --fronthaul-iface eth0
+sudo ./target/release/staticzero defense --rf_defense
+sudo ./target/release/staticzero offense --enable-rf --sdr-iface sdr0 --fronthaul-iface eth0
 
 # Run with next-generation wireless modules (Wi-Fi 6/7/8, D2C satellite, UWB,
 # Matter/Ambient IoT/DECT, 6G horizon)
-sudo ./target/release/staticzero-defense --nextgen_wifi_defense --d2c_defense --sixg_defense
-sudo ./target/release/staticzero-offense --enable-nextgen-wifi --enable-d2c --enable-6g
+sudo ./target/release/staticzero defense --nextgen_wifi_defense --d2c_defense --sixg_defense
+sudo ./target/release/staticzero offense --enable-nextgen-wifi --enable-d2c --enable-6g
 
 # Next-generation tools
-./target/release/osnma-verify selftest
-./target/release/d2c-monitor < reports.jsonl
-./target/release/mlo-analyzer < mlo_frames.jsonl
+./target/release/staticzero osnma-verify selftest
+./target/release/staticzero d2c-monitor < reports.jsonl
+./target/release/staticzero mlo-analyzer < mlo_frames.jsonl
 
 # Feed tool verdicts into the defense engine (Modules 56/61/62)
-./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-
-sudo ./target/release/staticzero-defense --d2c_defense --tool-input d2c=/var/log/d2c-monitor.jsonl
+./target/release/staticzero mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero defense --modules 56 --tool-input mlo=-
+sudo ./target/release/staticzero defense --d2c_defense --tool-input d2c=/var/log/d2c-monitor.jsonl
 
 # Feed 6g-sim verdicts into the defense engine (Modules 66/67/70; use a file
 # per kind — only one stdin is possible per invocation)
-./target/release/6g-sim generate --scenario ai-ran-tamper --count 6 | ./target/release/6g-sim analyze > /tmp/sixg.jsonl
-sudo ./target/release/staticzero-defense --sixg_defense \
+./target/release/staticzero 6g-sim generate --scenario ai-ran-tamper --count 6 | ./target/release/staticzero 6g-sim analyze > /tmp/sixg.jsonl
+sudo ./target/release/staticzero defense --sixg_defense \
     --tool-input airan=/tmp/sixg.jsonl --tool-input pqc=/tmp/sixg.jsonl --tool-input noncred=/tmp/sixg.jsonl
 
 # Lab-tier smoke tests: offensive probes, traffic path, real modem devices,

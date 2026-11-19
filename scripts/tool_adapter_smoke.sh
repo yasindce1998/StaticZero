@@ -16,14 +16,14 @@ set -euo pipefail
 workspace="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$workspace"
 
-defense_bin="target/release/staticzero-defense"
-offense_bin="target/release/staticzero-offense"
-for bin in "$defense_bin" "$offense_bin"; do
-    if [[ ! -x "$bin" ]]; then
-        echo "Missing $bin. Build with: cargo xtask build-ebpf --release && cargo build --release -p staticzero-defense -p staticzero-offense --features ebpf-bin" >&2
-        exit 1
-    fi
-done
+# The multi-call `staticzero` binary is what releases ship — dogfood it via
+# its `defense`/`offense` subcommands so the smoke validates the shipped
+# artifact, not just the development bins.
+multi_bin="target/release/staticzero"
+if [[ ! -x "$multi_bin" ]]; then
+    echo "Missing $multi_bin. Build with: cargo xtask build-ebpf --release && cargo build --release -p staticzero --features ebpf-bin" >&2
+    exit 1
+fi
 
 run_as_root() {
     if [[ "$EUID" -eq 0 ]]; then
@@ -77,6 +77,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ── Part 0: multi-call dispatch (no privileges needed) ───────────────────────
+
+# A symlink under a legacy name must route to the right subcommand.
+legacy_link="$tmpdir/staticzero-defense"
+ln -s "$(realpath "$multi_bin")" "$legacy_link"
+legacy_out="$("$legacy_link" --doctor --modules 99 2>&1 || true)"
+echo "$legacy_out" | grep -q "unknown defense module 99" \
+    || { echo "SMOKE FAIL: legacy argv[0] dispatch did not route to the defense engine"; exit 1; }
+"$multi_bin" osnma-verify selftest >/dev/null \
+    || { echo "SMOKE FAIL: staticzero osnma-verify subcommand failed"; exit 1; }
+echo "PASS: multi-call dispatch (subcommands + legacy argv[0])."
+
 # ── Part 1: defense engine with real tool-input verdict streams ──────────────
 
 # One Wi-Fi 7 MLO finding (Module 56).
@@ -91,7 +103,7 @@ cat > "$tmpdir/sixg.jsonl" <<'EOF'
 EOF
 
 echo "Running defense engine (real eBPF load + tool adapters, 12s window)."
-run_as_root timeout --signal=INT 12s "$defense_bin" \
+run_as_root timeout --signal=INT 12s "$multi_bin" defense \
     --modules 56,66,67 \
     --tool-input "mlo=$tmpdir/mlo.jsonl" \
     --tool-input "airan=$tmpdir/sixg.jsonl" \
@@ -138,7 +150,7 @@ echo "PASS: defense tool adapters — 3 modules, 3 alerts, 1 compound threat."
 echo "Running offense loader (next-gen kprobes + XDP on $iface, 8s window)."
 # Note: the offense loader logs to stdout (tracing default); the defense
 # engine logs to stderr. Combine both streams for assertions.
-run_as_root timeout --signal=INT 8s "$offense_bin" \
+run_as_root timeout --signal=INT 8s "$multi_bin" offense \
     --enable-nextgen-iot \
     --enable-6g \
     --enable-secure-ranging \

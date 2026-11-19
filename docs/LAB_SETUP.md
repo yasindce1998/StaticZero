@@ -293,7 +293,7 @@ sudo srsenb /etc/srsran/enb.conf
 sudo systemctl start aegis-sdr-bridge
 
 # Start protocol correlator
-./target/release/protocol-correlator --ingest-port 7892
+./target/release/staticzero protocol-correlator --ingest-port 7892
 ```
 
 ---
@@ -524,9 +524,9 @@ sudo staticzero-defense \
   --sdr-bridge 127.0.0.1:7891
 
 # Standalone tools
-./target/release/sdr-bridge --sdr-type bladerf --mode scan --scan-bands 3,7
-./target/release/modem-firmware analyze --chipset qualcomm --firmware modem.mbn
-./target/release/protocol-correlator --threshold 0.8
+./target/release/staticzero sdr-bridge --sdr-type bladerf --mode scan --scan-bands 3,7
+./target/release/staticzero modem-firmware analyze --chipset qualcomm --firmware modem.mbn
+./target/release/staticzero protocol-correlator --threshold 0.8
 
 # Extended RF domains — Offense
 sudo staticzero-offense \
@@ -669,33 +669,33 @@ sudo staticzero-defense \
 
 1. Set up Wi-Fi 7 AP with MLO-capable client (multi-link assoc on 2.4/5/6 GHz)
 2. Capture MLO link records with monitor-mode NIC
-3. Feed captured frames to mlo-analyzer (`./target/release/mlo-analyzer < mlo_frames.jsonl`)
+3. Feed captured frames to mlo-analyzer (`./target/release/staticzero mlo-analyzer < mlo_frames.jsonl`)
 4. Activate Feature F173 (MLO Link Desynchronization) to tear down a single link
 5. Verify Module 56 detects key/link mismatch: ALERT_MLO_INTEGRITY
-6. Pipe the analyzer output into the defense engine (`./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-`)
+6. Pipe the analyzer output into the defense engine (`./target/release/staticzero mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero defense --modules 56 --tool-input mlo=-`)
 7. Verify the alert surfaces via the HTTP API / JSON output
 
 ### Scenario 13: D2C Cell Spoof Detection
 
 1. Place NTN-capable test UE in RF shield box
-2. Feed UE cell reports to d2c-monitor (`./target/release/d2c-monitor < reports.jsonl`)
+2. Feed UE cell reports to d2c-monitor (`./target/release/staticzero d2c-monitor < reports.jsonl`)
 3. Activate Feature F180 (Spoofed Satellite Cell) with terrestrial timing advance
 4. Verify Module 61 detects physics inconsistency: ALERT_D2C_CELL_SPOOF
 5. Combine with Feature F92 (IMSI catching) for satellite-grade IMSI catcher test
 6. Confirm correlation with Module 18 into `D2cCellSpoofing` compound threat
-7. Pipe the monitor output into the defense engine (`./target/release/d2c-monitor < reports.jsonl | sudo ./target/release/staticzero-defense --modules 61 --tool-input d2c=-`)
+7. Pipe the monitor output into the defense engine (`./target/release/staticzero d2c-monitor < reports.jsonl | sudo ./target/release/staticzero defense --modules 61 --tool-input d2c=-`)
 8. Verify the alert surfaces via the HTTP API / JSON output
 
 ### Scenario 14: OSNMA Bypass / LEO PNT Spoof
 
 1. Set up u-blox NEO-F9P Galileo-capable receiver capturing I/NAV pages
-2. Run osnma-verify on captured records (`./target/release/osnma-verify`)
+2. Run osnma-verify on captured records (`./target/release/staticzero osnma-verify`)
 3. Activate Feature F183 (OSNMA Authentication Bypass) with forged/absent TESLA chain
 4. Verify Module 62 detects auth failure: ALERT_GNSS_AUTH_FAILURE
 5. Activate Feature F182 (LEO PNT Signal Spoofing) for Xona-class PNT forgery
 6. Verify Module 68 detects signal anomaly: ALERT_LEO_PNT
 7. Confirm correlation into `GnssSpoofing` compound threat
-8. Pipe the verifier output into the defense engine (`./target/release/osnma-verify verify < records.jsonl | sudo ./target/release/staticzero-defense --modules 62 --tool-input osnma=-`)
+8. Pipe the verifier output into the defense engine (`./target/release/staticzero osnma-verify verify < records.jsonl | sudo ./target/release/staticzero defense --modules 62 --tool-input osnma=-`)
 9. Verify the alert surfaces via the HTTP API / JSON output
 
 ### Scenario 15: Matter Passcode Attack
@@ -710,9 +710,9 @@ sudo staticzero-defense \
 ### Scenario 16: 6G Simulation
 
 1. Set up simulation environment (Colosseum-class testbed or synthetic trace replay)
-2. Generate synthetic lab traces with 6g-sim (`./target/release/6g-sim generate --scenario ai-ran-tamper --count 6 > trace.jsonl`; scenarios: clean, ai-ran-tamper, pqc-downgrade, non-credential-abuse)
-3. Analyze the traces into tagged verdicts (`./target/release/6g-sim analyze trace.jsonl > /tmp/sixg.jsonl`) — integrity-hash changes without a version advance become `ai_ran` verdicts, ML-KEM → classic handshake fallbacks become `pqc` verdicts, unauthorized cross-network credential use becomes `non_credential` verdicts
-4. Feed the verdicts into the defense engine (`sudo ./target/release/staticzero-defense --sixg_defense --tool-input airan=/tmp/sixg.jsonl --tool-input pqc=/tmp/sixg.jsonl --tool-input noncred=/tmp/sixg.jsonl`)
+2. Generate synthetic lab traces with 6g-sim (`./target/release/staticzero 6g-sim generate --scenario ai-ran-tamper --count 6 > trace.jsonl`; scenarios: clean, ai-ran-tamper, pqc-downgrade, non-credential-abuse)
+3. Analyze the traces into tagged verdicts (`./target/release/staticzero 6g-sim analyze trace.jsonl > /tmp/sixg.jsonl`) — integrity-hash changes without a version advance become `ai_ran` verdicts, ML-KEM → classic handshake fallbacks become `pqc` verdicts, unauthorized cross-network credential use becomes `non_credential` verdicts
+4. Feed the verdicts into the defense engine (`sudo ./target/release/staticzero defense --sixg_defense --tool-input airan=/tmp/sixg.jsonl --tool-input pqc=/tmp/sixg.jsonl --tool-input noncred=/tmp/sixg.jsonl`)
 5. Verify Module 66 detects model tampering: ALERT_AI_RAN_INTEGRITY
 6. Verify Module 67 detects downgrade: ALERT_PQC_DOWNGRADE (repeated downgrades escalate to the `PqcDowngrade` threat)
 7. Verify Module 70 flags unauthorized credential crossing: ALERT_NON_CREDENTIAL_ABUSE

@@ -8,6 +8,9 @@
 //! with EEXIST (`bpf_prog_array_copy` refuses duplicate programs), so per-CPU
 //! attachment of a single program is impossible by design and unnecessary.
 
+#[cfg(feature = "ebpf-bin")]
+pub mod loader;
+
 use anyhow::{Context, Result};
 use aya::programs::{KProbe, Xdp};
 use aya::Bpf;

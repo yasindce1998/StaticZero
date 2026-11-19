@@ -26,7 +26,6 @@ ebpf-bin = []
 common = { package = "staticzero-common", path = "../common", default-features = false, features = ["user"] }
 anyhow = "1"
 aya = { version = "~0.12", features = ["async_tokio"] }
-aya-log = "~0.2"
 aya-obj = "0.1"
 bytes = "1"
 clap = { version = "4", features = ["derive"] }

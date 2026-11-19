@@ -34,10 +34,13 @@ run_as_root() {
 }
 
 # The defense engine resolves the openat tracepoint layout at startup even
-# when only userspace modules are selected; tracefs must be visible.
-if [[ ! -d /sys/kernel/tracing/events/syscalls && ! -d /sys/kernel/debug/tracing/events/syscalls ]]; then
+# when only userspace modules are selected; tracefs must be visible. The
+# existence check runs as root because tracefs directories are often
+# root-only, and the mount is idempotent (a mounted tracefs is fine).
+if ! run_as_root test -d /sys/kernel/tracing/events/syscalls && \
+   ! run_as_root test -d /sys/kernel/debug/tracing/events/syscalls; then
     run_as_root mkdir -p /sys/kernel/tracing
-    run_as_root mount -t tracefs tracefs /sys/kernel/tracing
+    run_as_root mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null || true
 fi
 
 # The offense loader logs via RUST_LOG; enable info so attach results are

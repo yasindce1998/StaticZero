@@ -1,0 +1,32 @@
+[package]
+name = "staticzero"
+version = "0.7.0"
+license = "MIT"
+edition = "2021"
+description = "StaticZero multi-call binary — one executable for the defense engine, offense loader, and every tool"
+
+# Building this binary requires the compiled eBPF objects produced by
+# `cargo xtask build-ebpf` (the defense/offense subcommands embed them),
+# so the crate is excluded from the workspace default-members.
+[[bin]]
+name = "staticzero"
+path = "src/main.rs"
+required-features = ["ebpf-bin"]
+
+[features]
+ebpf-bin = [
+    "dep:defense",
+    "dep:offense",
+    "defense/ebpf-bin",
+    "offense/ebpf-bin",
+]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+defense = { package = "staticzero-defense", path = "../defense", optional = true }
+offense = { package = "staticzero-offense", path = "../offense", optional = true }
+staticzero-tools = { path = "../tools" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]

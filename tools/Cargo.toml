@@ -1,6 +1,6 @@
 [package]
 name = "staticzero-tools"
-version = "0.6.0"
+version = "0.7.0"
 license = "MIT"
 edition = "2021"
 description = "SDR integration, modem firmware analysis, and lab automation tools for StaticZero"
@@ -8,34 +8,6 @@ description = "SDR integration, modem firmware analysis, and lab automation tool
 [lib]
 name = "staticzero_tools"
 path = "src/lib.rs"
-
-[[bin]]
-name = "sdr-bridge"
-path = "src/sdr_integration.rs"
-
-[[bin]]
-name = "modem-firmware"
-path = "src/modem_firmware.rs"
-
-[[bin]]
-name = "protocol-correlator"
-path = "src/protocol_correlator.rs"
-
-[[bin]]
-name = "osnma-verify"
-path = "src/osnma_verify.rs"
-
-[[bin]]
-name = "d2c-monitor"
-path = "src/d2c_monitor.rs"
-
-[[bin]]
-name = "mlo-analyzer"
-path = "src/mlo_analyzer.rs"
-
-[[bin]]
-name = "6g-sim"
-path = "src/sixg_sim.rs"
 
 [dependencies]
 anyhow = "1"

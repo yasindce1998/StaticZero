@@ -151,21 +151,21 @@ Test vehicle remote keyless entry systems for replay and relay vulnerabilities.
 Evaluate MLO key separation, link desynchronization, and coordination attacks against Wi-Fi 7 infrastructure.
 
 **Actors:** Enterprise WLAN vendors, Wi-Fi Alliance members, corporate security teams  
-**Scenario:** Deploy F173 (MLO Link Desync) and F174 (MLO Key Abuse) in an isolated RF lab with a Wi-Fi 7 AP. Use `mlo-analyzer` on captured frame records. Validate Module 56 (MLO Integrity Monitor) detects key-generation mismatches and sequence regression across the MLD's links. Pipe the analyzer into the defense engine (`./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-`) to activate Module 56 as a live userspace tool adapter.
+**Scenario:** Deploy F173 (MLO Link Desync) and F174 (MLO Key Abuse) in an isolated RF lab with a Wi-Fi 7 AP. Use `mlo-analyzer` on captured frame records. Validate Module 56 (MLO Integrity Monitor) detects key-generation mismatches and sequence regression across the MLD's links. Pipe the analyzer into the defense engine (`./target/release/staticzero mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero defense --modules 56 --tool-input mlo=-`) to activate Module 56 as a live userspace tool adapter.
 
 ### 20. Satellite Direct-to-Cell Impersonation Research
 
 Research spoofed satellite cells against D2C-capable handsets (Starlink D2C, AST SpaceMobile, Skylo).
 
 **Actors:** MNO satellite divisions, handset vendors, defense agencies  
-**Scenario:** Use `d2c-monitor` to score observed cells for physics consistency (timing advance, doppler, ephemeris). Deploy F180 (D2C Cell Spoof) in a shielded lab with test UEs. Validate Module 61 flags satellite-indicated cells with terrestrial parameters, and that correlation with Module 18 (IMSI Catcher) produces the `D2cCellSpoofing` threat. Pipe the monitor into the defense engine (`./target/release/d2c-monitor < reports.jsonl | sudo ./target/release/staticzero-defense --modules 61 --tool-input d2c=-`) to activate Module 61 as a live userspace tool adapter.
+**Scenario:** Use `d2c-monitor` to score observed cells for physics consistency (timing advance, doppler, ephemeris). Deploy F180 (D2C Cell Spoof) in a shielded lab with test UEs. Validate Module 61 flags satellite-indicated cells with terrestrial parameters, and that correlation with Module 18 (IMSI Catcher) produces the `D2cCellSpoofing` threat. Pipe the monitor into the defense engine (`./target/release/staticzero d2c-monitor < reports.jsonl | sudo ./target/release/staticzero defense --modules 61 --tool-input d2c=-`) to activate Module 61 as a live userspace tool adapter.
 
 ### 21. GNSS Authentication Verification (Galileo OSNMA)
 
 Cryptographically verify Galileo navigation messages and detect spoofing beyond C/N0 heuristics.
 
 **Actors:** PNT researchers, critical-infrastructure operators, aviation/maritime authorities  
-**Scenario:** Run `osnma-verify` against captured I/NAV OSNMA records (self-test first with `osnma-verify selftest`). Validate Module 62 ingests OSNMA failure verdicts and that OSNMA failure + LEO PNT anomaly (Module 68) correlates into the `GnssSpoofing` threat. Pipe the verifier into the defense engine (`./target/release/osnma-verify verify < records.jsonl | sudo ./target/release/staticzero-defense --modules 62 --tool-input osnma=-`) to activate Module 62 as a live userspace tool adapter.
+**Scenario:** Run `osnma-verify` against captured I/NAV OSNMA records (self-test first with `osnma-verify selftest`). Validate Module 62 ingests OSNMA failure verdicts and that OSNMA failure + LEO PNT anomaly (Module 68) correlates into the `GnssSpoofing` threat. Pipe the verifier into the defense engine (`./target/release/staticzero osnma-verify verify < records.jsonl | sudo ./target/release/staticzero defense --modules 62 --tool-input osnma=-`) to activate Module 62 as a live userspace tool adapter.
 
 ### 22. Smart Home Matter Commissioning Audit
 
@@ -205,61 +205,65 @@ cargo install bpf-linker
 # Build eBPF programs (both offense and defense)
 cargo xtask build-ebpf --release
 
-# Build all user-space binaries
-cargo build --release
+# Build the multi-call user-space binary (defense, offense, and every tool
+# as subcommands; embeds the eBPF objects)
+cargo build --release -p staticzero --features ebpf-bin
+
+# Development builds still produce the standalone legacy binaries
+# (cargo build --release -p staticzero-tools, etc.), but releases only
+# ship the multi-call `staticzero` binary
 ```
 
-**Output binaries:**
-- `target/release/staticzero-offense` — Telecom exploitation loader
-- `target/release/staticzero-defense` — Detection/correlation engine
+**Output binary:**
+- `target/release/staticzero` — Multi-call binary: `staticzero defense`, `staticzero offense`, and all tools as subcommands. Legacy names (`staticzero-defense`, `osnma-verify`, ...) keep working when symlinked — busybox-style argv[0] dispatch routes them to the matching subcommand
 
 ### Running the Defense Engine
 
 ```bash
 # All modules enabled, JSON output for SIEM integration
-sudo ./target/release/staticzero-defense \
+sudo ./target/release/staticzero defense \
   --bpf-path target/bpfel-unknown-none/release/staticzero-defense \
   --all \
   --json
 
 # Only basic telecom detection (modules 16-23)
-sudo ./target/release/staticzero-defense --telecom-detect
+sudo ./target/release/staticzero defense --telecom-detect
 
 # Basic + advanced (modules 16-28)
-sudo ./target/release/staticzero-defense --telecom-detect --telecom-advanced
+sudo ./target/release/staticzero defense --telecom-detect --telecom-advanced
 
 # Full stack including 5G core defense (modules 16-32)
-sudo ./target/release/staticzero-defense --telecom-detect --telecom-advanced --telecom-5g-defense
+sudo ./target/release/staticzero defense --telecom-detect --telecom-advanced --telecom-5g-defense
 
 # Custom correlation window (seconds)
-sudo ./target/release/staticzero-defense --all --correlation-window 120
+sudo ./target/release/staticzero defense --all --correlation-window 120
 
 # Skip security hardening (development only)
-sudo ./target/release/staticzero-defense --all --no-harden
+sudo ./target/release/staticzero defense --all --no-harden
 ```
 
 ### Running the Offense Loader
 
 ```bash
 # Core telecom interception (F89-F100)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-telecom \
   --gtp-iface gtp0
 
 # Advanced telecom exploitation (F101-F108)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-telecom-advanced \
   --ims-iface ims0 \
   --wifi-iface wlan0
 
 # 5G advanced exploitation (F109-F120)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-5g-advanced \
   --sbi-iface sbi0 \
   --sdr-iface sdr0
 
 # All features simultaneously
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --all \
   --gtp-iface gtp0 \
   --ims-iface ims0 \
@@ -268,7 +272,7 @@ sudo ./target/release/staticzero-offense \
   --sdr-iface sdr0
 
 # Target specific subscriber (authorized testing only)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-telecom \
   --target-imsi 001010123456789
 ```
@@ -277,82 +281,82 @@ sudo ./target/release/staticzero-offense \
 
 ```bash
 # TETRA/P25 — Public Safety LMR (F135-F138)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-tetra-p25 \
   --lmr-iface sdr0
 
 # IoT Radio — BLE/Zigbee/LoRa/NB-IoT (F139-F150)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-iot-radio \
   --hci-iface hci0 \
   --wpan-iface wpan0
 
 # WiFi 802.11 (F151-F155)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-wifi \
   --wlan-iface wlan0
 
 # RF Control — RKE + UAV (F156-F160)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-rf-control \
   --uav-iface uav0
 
 # Broadcast/Paging — POCSAG + RDS + EAS (F161-F166)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-broadcast
 
 # O-RAN Fronthaul (F167-F170)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-oran \
   --fronthaul-iface eth1
 
 # AIS Maritime (F171-F172)
-sudo ./target/release/staticzero-offense \
+sudo ./target/release/staticzero offense \
   --enable-ais
 
 # Extended defense modules
-sudo ./target/release/staticzero-defense --lmr_defense
-sudo ./target/release/staticzero-defense --iot_defense
-sudo ./target/release/staticzero-defense --wifi_defense
-sudo ./target/release/staticzero-defense --rf_control_defense
-sudo ./target/release/staticzero-defense --broadcast_defense
-sudo ./target/release/staticzero-defense --oran_defense
-sudo ./target/release/staticzero-defense --ais_defense
+sudo ./target/release/staticzero defense --lmr_defense
+sudo ./target/release/staticzero defense --iot_defense
+sudo ./target/release/staticzero defense --wifi_defense
+sudo ./target/release/staticzero defense --rf_control_defense
+sudo ./target/release/staticzero defense --broadcast_defense
+sudo ./target/release/staticzero defense --oran_defense
+sudo ./target/release/staticzero defense --ais_defense
 ```
 
 ### Running Next-Generation Modules
 
 ```bash
 # Wi-Fi 6/6E/7/8 + sensing (F173-F179)
-sudo ./target/release/staticzero-offense --enable-nextgen-wifi --wifi-iface wlan0
+sudo ./target/release/staticzero offense --enable-nextgen-wifi --wifi-iface wlan0
 
 # Satellite direct-to-cell & PNT (F180-F184)
-sudo ./target/release/staticzero-offense --enable-d2c --sat-iface sat0 --sdr-iface sdr0
+sudo ./target/release/staticzero offense --enable-d2c --sat-iface sat0 --sdr-iface sdr0
 
 # UWB / secure ranging / BT 6.0 (F185-F188)
-sudo ./target/release/staticzero-offense --enable-secure-ranging --sdr-iface sdr0
+sudo ./target/release/staticzero offense --enable-secure-ranging --sdr-iface sdr0
 
 # Matter / Ambient IoT / DECT-2020 / FRMCS / LDACS (F189-F194)
-sudo ./target/release/staticzero-offense --enable-nextgen-iot --wpan-iface wpan0
+sudo ./target/release/staticzero offense --enable-nextgen-iot --wpan-iface wpan0
 
 # 6G horizon (F195-F200)
-sudo ./target/release/staticzero-offense --enable-6g --sdr-iface sdr0
+sudo ./target/release/staticzero offense --enable-6g --sdr-iface sdr0
 
 # Corresponding defense modules
-sudo ./target/release/staticzero-defense --nextgen_wifi_defense
-sudo ./target/release/staticzero-defense --d2c_defense
-sudo ./target/release/staticzero-defense --secure_ranging_defense
-sudo ./target/release/staticzero-defense --nextgen_iot_defense
-sudo ./target/release/staticzero-defense --sixg_defense
+sudo ./target/release/staticzero defense --nextgen_wifi_defense
+sudo ./target/release/staticzero defense --d2c_defense
+sudo ./target/release/staticzero defense --secure_ranging_defense
+sudo ./target/release/staticzero defense --nextgen_iot_defense
+sudo ./target/release/staticzero defense --sixg_defense
 
 # Next-generation analysis tools
-./target/release/osnma-verify selftest        # HMAC/SHA known-answer tests
-./target/release/d2c-monitor < cells.jsonl    # spoofed satellite cell scoring
-./target/release/mlo-analyzer < frames.jsonl  # Wi-Fi 7 MLO attack findings
-./target/release/6g-sim analyze < trace.jsonl # 6G control-plane verdicts (ai_ran/pqc/non_credential)
+./target/release/staticzero osnma-verify selftest        # HMAC/SHA known-answer tests
+./target/release/staticzero d2c-monitor < cells.jsonl    # spoofed satellite cell scoring
+./target/release/staticzero mlo-analyzer < frames.jsonl  # Wi-Fi 7 MLO attack findings
+./target/release/staticzero 6g-sim analyze < trace.jsonl # 6G control-plane verdicts (ai_ran/pqc/non_credential)
 
 # 6G lab scenario generation (synthetic traces, no testbed required)
-./target/release/6g-sim generate --scenario ai-ran-tamper --count 6
+./target/release/staticzero 6g-sim generate --scenario ai-ran-tamper --count 6
 # scenarios: clean, ai-ran-tamper, pqc-downgrade, non-credential-abuse
 ```
 
@@ -372,15 +376,15 @@ followed for appends, or `-` for stdin:
 
 ```bash
 # Pipe mlo-analyzer verdicts into Module 56 via stdin
-./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-
+./target/release/staticzero mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero defense --modules 56 --tool-input mlo=-
 
 # Follow a d2c-monitor verdict file for Module 61
-sudo ./target/release/staticzero-defense --d2c_defense --tool-input d2c=/var/log/d2c-monitor.jsonl
+sudo ./target/release/staticzero defense --d2c_defense --tool-input d2c=/var/log/d2c-monitor.jsonl
 
 # Feed 6g-sim verdicts into Modules 66/67/70 (file-based; only one stdin is
 # possible per invocation, so use a verdict file for multi-kind setups)
-./target/release/6g-sim analyze trace.jsonl > /tmp/sixg.jsonl
-sudo ./target/release/staticzero-defense --sixg_defense --tool-input airan=/tmp/sixg.jsonl --tool-input pqc=/tmp/sixg.jsonl --tool-input noncred=/tmp/sixg.jsonl
+./target/release/staticzero 6g-sim analyze trace.jsonl > /tmp/sixg.jsonl
+sudo ./target/release/staticzero defense --sixg_defense --tool-input airan=/tmp/sixg.jsonl --tool-input pqc=/tmp/sixg.jsonl --tool-input noncred=/tmp/sixg.jsonl
 ```
 
 For 6G labs without a testbed, `6g-sim generate --scenario

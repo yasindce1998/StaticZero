@@ -1,0 +1,457 @@
+//! StaticZero defense daemon — the `staticzero-defense` binary and the
+//! `staticzero defense` subcommand.
+//!
+//! Module is only available with the `ebpf-bin` feature: the daemon embeds
+//! the compiled eBPF objects via `include_bytes!`.
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
+
+use anyhow::{ensure, Context, Result};
+use aya::maps::RingBuf;
+use aya::BpfLoader;
+use clap::Parser;
+use tokio::signal;
+use tokio::sync::{mpsc, watch, Mutex, RwLock};
+use tracing::{info, warn};
+use tracing_subscriber::EnvFilter;
+
+use crate::adaptive::AdaptiveThresholds;
+use crate::bus::{BusMessage, InProcessBus};
+use crate::config::{Config, ConfigWatcher};
+use crate::metrics::Metrics;
+use crate::persistence::AlertStore;
+use crate::pipeline::{decode_alert, AlertPipeline};
+use crate::probes::{attach_probes, configure_modem_probe, select_probes, ProbeGroup, ProbeStatus};
+use crate::security::{harden_process, validate_environment, SecurityConfig};
+use crate::server::{build_router, AppState};
+use crate::TelecomCorrelationMetrics;
+use common::DefenseAlert;
+
+// The compiled eBPF object is embedded so release binaries are
+// self-contained. `cargo xtask build-ebpf` must run before building this
+// binary (enforced by the ebpf-bin feature requirement).
+#[cfg(debug_assertions)]
+const EMBEDDED_BPF: &[u8] =
+    include_bytes!("../../target/bpfel-unknown-none/debug/staticzero-defense");
+#[cfg(not(debug_assertions))]
+const EMBEDDED_BPF: &[u8] =
+    include_bytes!("../../target/bpfel-unknown-none/release/staticzero-defense");
+
+#[derive(Parser, Debug)]
+#[command(name = "staticzero-defense")]
+#[command(about = "StaticZero Telecom Network Defense Engine")]
+pub struct Cli {
+    /// Path to an external eBPF object file; overrides the embedded object
+    #[arg(short, long)]
+    bpf_path: Option<PathBuf>,
+
+    /// Configuration file path
+    #[arg(short, long, default_value = "/etc/staticzero/config.toml")]
+    config: PathBuf,
+
+    /// Read-only platform, privilege, ELF, and attachment preflight; then exit
+    #[arg(long)]
+    doctor: bool,
+
+    /// Select modules explicitly (comma-separated IDs); overrides group flags
+    #[arg(long, value_delimiter = ',')]
+    modules: Vec<u8>,
+
+    /// Exact absolute pathname to observe in native openat attempts (Module 22)
+    #[arg(long, default_value = "/dev/cdc-wdm0")]
+    modem_path: PathBuf,
+
+    /// Authorized process IDs for Module 22 (comma-separated; at most 32)
+    #[arg(long, value_delimiter = ',')]
+    allow_modem_pid: Vec<u32>,
+
+    /// Feed a next-gen tool verdict stream into the pipeline:
+    /// KIND=PATH with KIND one of mlo (Module 56), d2c (Module 61),
+    /// osnma (Module 62), airan (Module 66), pqc (Module 67), or noncred
+    /// (Module 70). PATH is a followed JSON-lines file, or - for stdin.
+    #[arg(long = "tool-input", value_name = "KIND=PATH")]
+    tool_inputs: Vec<String>,
+
+    /// Enable basic telecom detection (modules 16-23)
+    #[arg(long, default_value_t = true)]
+    telecom_detect: bool,
+
+    /// Enable advanced telecom detection (modules 24-28)
+    #[arg(long)]
+    telecom_advanced: bool,
+
+    /// Enable 5G core defense modules (29-32)
+    #[arg(long)]
+    telecom_5g_defense: bool,
+
+    /// Enable satellite defense modules (33-39)
+    #[arg(long)]
+    satellite_defense: bool,
+
+    /// Enable RF protocol domain defense modules (40-55)
+    #[arg(long)]
+    rf_defense: bool,
+
+    /// Enable next-gen Wi-Fi defense modules (56, 64, 69: MLO integrity, 802.11bf sensing, MAPC/HaLow)
+    #[arg(long)]
+    nextgen_wifi_defense: bool,
+
+    /// Enable satellite direct-to-cell / PNT defense modules (61-63, 68: D2C cell, OSNMA, NTN regen, LEO PNT)
+    #[arg(long)]
+    d2c_defense: bool,
+
+    /// Enable secure ranging defense module (57: UWB / BT channel sounding)
+    #[arg(long)]
+    secure_ranging_defense: bool,
+
+    /// Enable next-gen IoT defense modules (58-60, 65: Matter, Ambient IoT, DECT-2020, FRMCS/LDACS)
+    #[arg(long)]
+    nextgen_iot_defense: bool,
+
+    /// Enable 6G horizon defense modules (66-67, 70: AI-RAN, PQC downgrade, network-of-networks)
+    #[arg(long)]
+    sixg_defense: bool,
+
+    /// Enable all detection modules
+    #[arg(long)]
+    all: bool,
+
+    /// JSON output mode for SIEM integration
+    #[arg(long)]
+    json: bool,
+
+    /// Correlation window in seconds (overrides config)
+    #[arg(long)]
+    correlation_window: Option<u64>,
+
+    /// Skip security hardening (for development)
+    #[arg(long)]
+    no_harden: bool,
+}
+
+/// Entry point invoked by the `staticzero-defense` bin and the multi-call
+/// `staticzero` binary's `defense` subcommand. Building this module
+/// requires the `ebpf-bin` feature (the compiled eBPF objects).
+pub async fn run(cli: Cli) -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+
+    let tool_inputs = crate::adapters::parse_tool_inputs(&cli.tool_inputs)?;
+    let mut groups = Vec::new();
+    for (enabled, group) in [
+        (cli.all || cli.telecom_detect, ProbeGroup::Telecom),
+        (cli.all || cli.telecom_advanced, ProbeGroup::Advanced),
+        (cli.all || cli.telecom_5g_defense, ProbeGroup::Core),
+        (cli.all || cli.satellite_defense, ProbeGroup::Satellite),
+        (cli.all || cli.rf_defense, ProbeGroup::Rf),
+        (cli.all || cli.nextgen_wifi_defense, ProbeGroup::NextGenWifi),
+        (cli.all || cli.d2c_defense, ProbeGroup::D2c),
+        (
+            cli.all || cli.secure_ranging_defense,
+            ProbeGroup::SecureRanging,
+        ),
+        (cli.all || cli.nextgen_iot_defense, ProbeGroup::NextGenIot),
+        (cli.all || cli.sixg_defense, ProbeGroup::SixG),
+    ] {
+        if enabled {
+            groups.push(group);
+        }
+    }
+    let selected = select_probes(&cli.modules, &groups)?;
+    // Resolve the eBPF object bytes: an explicit --bpf-path overrides the
+    // object embedded at build time. A read failure is reported by the
+    // doctor preflight rather than aborting, so --doctor stays diagnostic.
+    let (bpf_bytes, bpf_source): (anyhow::Result<Vec<u8>>, String) = match &cli.bpf_path {
+        Some(path) => (
+            std::fs::read(path).with_context(|| format!("read eBPF object {}", path.display())),
+            path.display().to_string(),
+        ),
+        None => (
+            Ok(EMBEDDED_BPF.to_vec()),
+            format!("embedded object ({} bytes)", EMBEDDED_BPF.len()),
+        ),
+    };
+    let preflight = crate::doctor::inspect(
+        &bpf_bytes,
+        &bpf_source,
+        &selected,
+        &cli.modem_path,
+        &cli.allow_modem_pid,
+        &tool_inputs,
+    );
+    if cli.doctor || !preflight.passed() {
+        preflight.print(cli.json)?;
+    }
+    ensure!(
+        preflight.passed(),
+        "defense preflight failed; use --doctor for details"
+    );
+    if cli.doctor {
+        return Ok(());
+    }
+    let running = Arc::new(AtomicBool::new(true));
+
+    // ── Phase 4: Load configuration ─────────────────────────────────────────
+    let config = Config::load_or_default(&cli.config);
+    let config_arc = Arc::new(config.clone());
+    let (config_tx, _config_rx) = watch::channel(config_arc.clone());
+
+    let _config_watcher = if cli.config.exists() {
+        match ConfigWatcher::start(cli.config.clone(), config_tx) {
+            Ok(w) => {
+                info!("Config hot-reload enabled for {:?}", cli.config);
+                Some(w)
+            }
+            Err(e) => {
+                warn!(
+                    "Config watcher failed to start: {}. Hot-reload disabled.",
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        info!("No config file at {:?}, using defaults", cli.config);
+        None
+    };
+
+    let correlation_window = cli
+        .correlation_window
+        .unwrap_or(config.engine.correlation_window_secs);
+    let json_mode = cli.json || config.engine.json_output;
+
+    // ── Phase 3: Observability — metrics ────────────────────────────────────
+    let metrics = Metrics::new()?;
+    let start_time = Instant::now();
+
+    // ── Phase 2: Persistence layer ──────────────────────────────────────────
+    let store = if config.persistence.enabled {
+        match AlertStore::open(&config.persistence.db_path) {
+            Ok(s) => {
+                info!(
+                    "SQLite persistence enabled at {:?}",
+                    config.persistence.db_path
+                );
+                Some(s)
+            }
+            Err(e) => {
+                warn!("Failed to open alert store: {}. Persistence disabled.", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // ── Phase 7: Adaptive thresholds ────────────────────────────────────────
+    let adaptive = Arc::new(tokio::sync::Mutex::new(AdaptiveThresholds::new(
+        config.thresholds.min_confidence,
+    )));
+
+    // ── Phase 5: Message bus ────────────────────────────────────────────────
+    let bus = Arc::new(InProcessBus::new(4096));
+
+    // ── Phase 3: HTTP server ────────────────────────────────────────────────
+    let app_state = Arc::new(AppState {
+        metrics: metrics.clone(),
+        store: store.map(Mutex::new),
+        correlation_metrics: RwLock::new(TelecomCorrelationMetrics::default()),
+        start_time,
+    });
+
+    // ── eBPF loading ────────────────────────────────────────────────────────
+    info!("StaticZero Telecom Defense Engine starting");
+    info!("Loading eBPF programs from {}", bpf_source);
+
+    let bpf_bytes =
+        bpf_bytes.context("eBPF object unavailable; the preflight should have reported it")?;
+    let mut bpf = BpfLoader::new()
+        .load(&bpf_bytes)
+        .context("failed to load eBPF object")?;
+
+    let (_, filename_offset) = crate::doctor::openat_layout()?;
+    configure_modem_probe(
+        &mut bpf,
+        &cli.modem_path,
+        &cli.allow_modem_pid,
+        filename_offset,
+    )?;
+    let attached = attach_probes(&mut bpf, &selected, &tool_inputs);
+    for report in &attached.reports {
+        match report.status {
+            ProbeStatus::Active => info!(module = report.module, "active: {}", report.detail),
+            _ => warn!(module = report.module, status = ?report.status, "{}", report.detail),
+        }
+    }
+    ensure!(
+        attached
+            .reports
+            .iter()
+            .any(|report| report.status == ProbeStatus::Active),
+        "no defense modules attached"
+    );
+
+    // ── Alert event loop with full integration ──────────────────────────────
+    let mut pipeline = AlertPipeline::new(
+        correlation_window,
+        app_state.clone(),
+        adaptive.clone(),
+        bus.clone(),
+    );
+    let (alert_tx, mut alert_rx) = mpsc::channel::<DefenseAlert>(4096);
+
+    let correlation_running = running.clone();
+
+    tokio::spawn(async move {
+        while let Some(alert) = alert_rx.recv().await {
+            if !correlation_running.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let details = crate::format_alert_details(&alert);
+            let threat = match pipeline.process(&alert).await {
+                Ok(threat) => threat,
+                Err(error) => {
+                    warn!("Alert processing failed: {error:#}");
+                    continue;
+                }
+            };
+
+            // Output
+            if json_mode {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "timestamp_ns": alert.timestamp_ns, "alert_type": alert.alert_type,
+                        "severity": alert.severity, "pid": alert.pid, "context": alert.context,
+                        "details": details, "threat": threat,
+                    })
+                );
+            } else {
+                info!(
+                    "ALERT type={} severity={} {}",
+                    alert.alert_type, alert.severity, details
+                );
+                if let Some(ref t) = threat {
+                    info!(
+                        "THREAT id={} category={:?} confidence={:.2} severity={} — {}",
+                        t.threat_id, t.category, t.confidence, t.severity, t.description
+                    );
+                }
+            }
+        }
+    });
+
+    // ── Userspace tool adapters (Modules 56, 61, 62) ────────────────────────
+    for (kind, path) in &tool_inputs {
+        let tx = alert_tx.clone();
+        let tool_running = running.clone();
+        let kind = *kind;
+        let path = path.clone();
+        if path == std::path::Path::new("-") {
+            tokio::task::spawn_blocking(move || {
+                crate::adapters::run_tool_input_stdin(kind, tx, tool_running)
+            });
+        } else {
+            tokio::spawn(async move {
+                crate::adapters::run_tool_input_file(kind, path, tx, tool_running).await
+            });
+        }
+    }
+
+    // ── Feedback consumer (bus → adaptive thresholds) ───────────────────────
+    let feedback_bus = bus.clone();
+    let feedback_metrics = metrics.clone();
+    tokio::spawn(async move {
+        while let Some(msg) = feedback_bus.recv_feedback().await {
+            if let BusMessage::FeedbackOverride {
+                threat_id: _,
+                is_false_positive,
+                reason,
+            } = msg
+            {
+                info!(
+                    "Operator feedback: false_positive={} reason={}",
+                    is_false_positive, reason
+                );
+                // For now we don't look up the category from the threat_id,
+                // but in production you'd fetch the threat and get its category.
+                feedback_metrics.record_false_positive_override();
+            }
+        }
+    });
+
+    // ── Alert reader (ring buffer → correlation pipeline) ────────────────────
+    let alerts_map = bpf
+        .take_map("DEFENSE_ALERTS")
+        .context("DEFENSE_ALERTS map not found in eBPF object")?;
+    let mut ring_buf =
+        RingBuf::try_from(alerts_map).context("failed to open DEFENSE_ALERTS ring buffer")?;
+
+    // Attach programs and open maps before privilege reduction.
+    if !cli.no_harden {
+        for warning in validate_environment() {
+            warn!("{}", warning);
+        }
+        harden_process(&SecurityConfig::default())?;
+    }
+
+    // Bind before starting the blocking reader, so bind failures cannot leave
+    // an unbounded reader alive while the Tokio runtime shuts down.
+    let listener = if config.server.enabled {
+        Some(
+            tokio::net::TcpListener::bind(&config.server.listen_addr)
+                .await
+                .context("failed to bind HTTP server")?,
+        )
+    } else {
+        None
+    };
+
+    let rb_tx = alert_tx.clone();
+    let rb_running = running.clone();
+
+    tokio::task::spawn_blocking(move || {
+        while rb_running.load(Ordering::Relaxed) {
+            while let Some(item) = ring_buf.next() {
+                let alert = match decode_alert(&item) {
+                    Ok(alert) => alert,
+                    Err(error) => {
+                        warn!("Discarding malformed ring buffer record: {error}");
+                        continue;
+                    }
+                };
+                if rb_tx.blocking_send(alert).is_err() {
+                    return;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    });
+    drop(alert_tx);
+
+    // Do not expose the API until attachment and ring-buffer setup succeed.
+    if let Some(listener) = listener {
+        let router = build_router(app_state.clone());
+        info!("HTTP server listening on {}", config.server.listen_addr);
+        tokio::spawn(async move {
+            if let Err(error) = axum::serve(listener, router).await {
+                warn!("HTTP server stopped: {error}");
+            }
+        });
+    }
+
+    info!("StaticZero Defense Engine running. Press Ctrl+C to stop.");
+    let shutdown = signal::ctrl_c().await;
+    running.store(false, Ordering::SeqCst);
+    shutdown?;
+    info!("Shutting down.");
+    Ok(())
+}

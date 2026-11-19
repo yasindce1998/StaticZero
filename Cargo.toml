@@ -6,6 +6,7 @@ members = [
     "defense-ebpf",
     "defense",
     "tools",
+    "cli",
     "xtask",
 ]
 # The *-ebpf crates only compile for the bpfel-unknown-none target

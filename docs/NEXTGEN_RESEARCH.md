@@ -139,10 +139,10 @@ Colosseum-class testbeds (or its own `generate` scenarios) and emits the
 
 | Tool | Purpose | Basis |
 |------|---------|-------|
-| `osnma-verify` | Cryptographic GNSS spoofing detection | Galileo OSNMA SIS ICD; operational since 2025; HMAC-SHA256 per RFC 2104 validated against RFC 4231 vectors |
-| `d2c-monitor` | Spoofed satellite-cell detection | SIGCOMM 2025 D2C measurements; TS 38.213 timing advance limits; LEO doppler physics |
-| `mlo-analyzer` | Wi-Fi 7 MLO attack detection | 802.11be key hierarchy and per-link separation requirements |
-| `6g-sim` | 6G control-plane trace analysis (AI-RAN integrity, PQC downgrade, non-credential abuse) | Release 20 study attack surfaces; simulation-based validation pending real 6G stacks |
+| `staticzero osnma-verify` | Cryptographic GNSS spoofing detection | Galileo OSNMA SIS ICD; operational since 2025; HMAC-SHA256 per RFC 2104 validated against RFC 4231 vectors |
+| `staticzero d2c-monitor` | Spoofed satellite-cell detection | SIGCOMM 2025 D2C measurements; TS 38.213 timing advance limits; LEO doppler physics |
+| `staticzero mlo-analyzer` | Wi-Fi 7 MLO attack detection | 802.11be key hierarchy and per-link separation requirements |
+| `staticzero 6g-sim` | 6G control-plane trace analysis (AI-RAN integrity, PQC downgrade, non-credential abuse) | Release 20 study attack surfaces; simulation-based validation pending real 6G stacks |
 | E2AP dissector | O-RAN RIC E2 parsing | O-RAN.WG3.E2AP |
 | F1AP dissector | CU/DU split parsing | 3GPP TS 38.423 |
 

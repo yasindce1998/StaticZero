@@ -88,23 +88,14 @@ jobs:
       - name: Build binaries
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: |
-          cargo build --release --target ${{ matrix.target }} -p staticzero-offense --features ebpf-bin
-          cargo build --release --target ${{ matrix.target }} -p staticzero-defense --features ebpf-bin
-          cargo build --release --target ${{ matrix.target }} -p staticzero-tools
+        run: cargo build --release --target ${{ matrix.target }} -p staticzero --features ebpf-bin
 
       - name: Package
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/staticzero-offense dist/staticzero-offense-linux-${{ matrix.arch }}
-          cp target/${{ matrix.target }}/release/staticzero-defense dist/staticzero-defense-linux-${{ matrix.arch }}
-          cp target/${{ matrix.target }}/release/modem-firmware dist/modem-firmware-linux-${{ matrix.arch }}
-          cp target/${{ matrix.target }}/release/sdr-bridge dist/sdr-bridge-linux-${{ matrix.arch }}
-          cp target/${{ matrix.target }}/release/protocol-correlator dist/protocol-correlator-linux-${{ matrix.arch }}
-          cp target/${{ matrix.target }}/release/osnma-verify dist/osnma-verify-linux-${{ matrix.arch }}
-          cp target/${{ matrix.target }}/release/d2c-monitor dist/d2c-monitor-linux-${{ matrix.arch }}
-          cp target/${{ matrix.target }}/release/mlo-analyzer dist/mlo-analyzer-linux-${{ matrix.arch }}
-          cp target/${{ matrix.target }}/release/6g-sim dist/6g-sim-linux-${{ matrix.arch }}
+          # The multi-call binary: `staticzero defense|offense|<tool>` with
+          # busybox-style argv[0] dispatch for the legacy names.
+          cp target/${{ matrix.target }}/release/staticzero dist/staticzero-linux-${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:

@@ -177,18 +177,22 @@ fn is_known_d2c_plmn(plmn: &str) -> bool {
     )
 }
 
+/// Command-line interface for `d2c-monitor`. Usable standalone (the thin
+/// `src/bin/d2c-monitor.rs` wrapper) or as a subcommand of the multi-call
+/// `staticzero` binary.
 #[derive(Parser, Debug)]
 #[command(
     name = "d2c-monitor",
     about = "Direct-to-Cell satellite cell monitor — spoofed satellite cell (satellite IMSI catcher) detection"
 )]
-struct Cli {
+pub struct Cli {
     /// Input file with one D2cCellReport JSON object per line (stdin if omitted)
     input: Option<String>,
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+/// Entry point invoked by the `d2c-monitor` bin and the multi-call
+/// `staticzero` binary's `d2c-monitor` subcommand.
+pub fn run(cli: Cli) -> Result<()> {
     let stdin = std::io::stdin();
     let reader: Box<dyn BufRead> = match cli.input {
         Some(path) => Box::new(BufReader::new(

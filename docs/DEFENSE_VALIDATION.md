@@ -92,14 +92,14 @@ Consequences:
 
 ```bash
 cargo xtask build-ebpf --release
-cargo build --release -p staticzero-defense
+cargo build --release -p staticzero --features ebpf-bin
 
 # Can run unprivileged; privilege/tracefs failures are expected in that case.
-./target/release/staticzero-defense --doctor --all
-./target/release/staticzero-defense --doctor --modules 22 --json
+./target/release/staticzero defense --doctor --all
+./target/release/staticzero defense --doctor --modules 22 --json
 
 # Check the environment under the privileges used for the real deployment.
-sudo ./target/release/staticzero-defense --doctor --modules 22
+sudo ./target/release/staticzero defense --doctor --modules 22
 ```
 
 `--doctor` does not load BPF, create maps, attach probes, open a database, start
@@ -127,7 +127,7 @@ smoke test changes mounts or sysctls automatically.
 For real, authorized modem telemetry, configure your own device path and PIDs:
 
 ```bash
-sudo env RUST_LOG=info ./target/release/staticzero-defense \
+sudo env RUST_LOG=info ./target/release/staticzero defense \
   --modules 22 --modem-path /dev/cdc-wdm0 --allow-modem-pid 1234,5678 \
   --config config.example.toml --json
 ```

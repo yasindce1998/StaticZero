@@ -14,7 +14,7 @@ use tracing::{error, info, warn};
 #[derive(Debug, Parser)]
 #[command(name = "sdr-bridge")]
 #[command(about = "SDR Integration Layer — bridges SDR hardware to StaticZero telecom modules")]
-struct Cli {
+pub struct Cli {
     /// SDR device type (hackrf, bladerf, usrp, rtlsdr, limesdr)
     #[arg(long, default_value = "hackrf")]
     sdr_type: String,
@@ -541,10 +541,9 @@ fn handle_control_client(stream: TcpStream, bridge: Arc<SdrBridge>) {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
-
+/// Entry point invoked by the standalone bin and the multi-call
+/// `staticzero` binary's subcommand.
+pub async fn run(cli: Cli) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -567,17 +566,17 @@ async fn main() -> Result<()> {
     // STATICZERO_SDR_TX=1 with the cabled HackRF→RTL-SDR loopback connected,
     // real RF over a cable) and exits instead of serving the control API.
     if cli.mode == "selftest-tx" {
-        let options = staticzero_tools::rf_selftest::SelfTestOptions {
+        let options = crate::rf_selftest::SelfTestOptions {
             frequency_hz: cli.frequency,
             sample_rate_hz: cli.sample_rate,
             tx_gain_db: cli.gain,
             require_hardware: std::env::var_os("STATICZERO_SDR_TX")
                 .map(|v| v == "1")
                 .unwrap_or(false),
-            ..staticzero_tools::rf_selftest::SelfTestOptions::default()
+            ..crate::rf_selftest::SelfTestOptions::default()
         };
         let workdir = std::env::temp_dir().join(format!("sdr-selftest-{}", std::process::id()));
-        let report = staticzero_tools::rf_selftest::run_selftest(&workdir, &options)?;
+        let report = crate::rf_selftest::run_selftest(&workdir, &options)?;
         println!("{}", serde_json::to_string_pretty(&report)?);
         ensure!(
             report.passed,

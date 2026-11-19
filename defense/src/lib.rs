@@ -9,6 +9,8 @@ pub mod adapters;
 pub mod adaptive;
 pub mod bus;
 pub mod config;
+#[cfg(feature = "ebpf-bin")]
+pub mod daemon;
 pub mod doctor;
 pub mod metrics;
 pub mod persistence;

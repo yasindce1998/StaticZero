@@ -84,10 +84,14 @@ jobs:
         run: |
           cargo check --release -p staticzero-defense --features ebpf-bin --bins
           cargo check --release -p staticzero-offense --features ebpf-bin --bins
+          cargo check --release -p staticzero --features ebpf-bin --bins
           cargo clippy --release -p staticzero-defense --features ebpf-bin --bins -- -D warnings
           cargo clippy --release -p staticzero-offense --features ebpf-bin --bins -- -D warnings
+          cargo clippy --release -p staticzero --features ebpf-bin --bins -- -D warnings
       - name: Doctor CLI tests (embedded eBPF)
         run: cargo test --release --features ebpf-bin -p staticzero-defense --test doctor_cli
+      - name: Multi-call binary dispatch tests
+        run: cargo test --release --features ebpf-bin -p staticzero
       - name: Passive defense smoke test (disposable runner VM)
         timeout-minutes: 5
         run: bash scripts/defense_smoke.sh
@@ -99,7 +103,7 @@ jobs:
       - name: Tool adapter + next-gen smoke test (disposable runner VM)
         timeout-minutes: 5
         run: |
-          cargo build --release -p staticzero-defense -p staticzero-offense --features ebpf-bin
+          cargo build --release -p staticzero --features ebpf-bin
           bash scripts/tool_adapter_smoke.sh
 
   test:

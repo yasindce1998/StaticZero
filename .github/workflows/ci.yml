@@ -106,6 +106,31 @@ jobs:
           cargo build --release -p staticzero --features ebpf-bin
           bash scripts/tool_adapter_smoke.sh
 
+  soapy:
+    name: SoapySDR device layer (real hardware path)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Install SoapySDR
+        run: sudo apt-get update && sudo apt-get install -y libsoapysdr-dev
+      - name: Check & clippy (soapy feature)
+        run: |
+          cargo check -p staticzero-tools --features soapy --all-targets
+          cargo clippy -p staticzero-tools --features soapy --all-targets -- -D warnings
+      - name: Tests against the real library
+        run: cargo test -p staticzero-tools --features soapy
+      - name: Device enumeration smoke (no hardware attached)
+        run: |
+          cargo build -p staticzero-tools --features soapy --release
+          # Must exit 0 and print an empty device list: the real
+          # libSoapySDR enumerate path runs without hardware.
+          output="$(./target/release/sdr-bridge --mode list 2>/dev/null)"
+          echo "$output" | grep -q '\[\]'
+
   test:
     name: Tests
     runs-on: ubuntu-latest

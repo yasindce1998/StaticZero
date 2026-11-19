@@ -114,7 +114,20 @@ the variable unset the tool reports the hardware stage as skipped with the
 reason; with it set, any failure (missing tool, failed capture, insufficient
 energy) is a hard failure.
 
-## 5. Tool adapter + next-generation smoke test
+## 5. SoapySDR device layer
+
+A dedicated CI job (`SoapySDR device layer`) exercises the sdr-bridge's
+real `libSoapySDR` path with **no hardware attached**:
+
+- Installs `libsoapysdr-dev`, then runs check, clippy (`-D warnings`), and
+  the full tools test suite with `--features soapy` against the real
+  library.
+- Builds the feature-gated `sdr-bridge` and runs a device-enumeration
+  smoke: `--mode list` must exit 0 and print `[]` with no hardware
+  attached — proving the real FFI path (including
+  `SoapySDRDevice_enumerate`) executes rather than the stub.
+
+## 6. Tool adapter + next-generation smoke test
 
 ```bash
 cargo xtask build-ebpf --release
@@ -156,9 +169,14 @@ matching subcommand) — in two parts, on an isolated dummy interface
 
 ## What is still not covered
 
-- Real SDR transmission through the `sdr-bridge` control API (the JSON `inject`
-  command still targets the stub device layer; only the self-test TX path is
-  real).
+- RF transmission over the air with physical hardware in CI. The SoapySDR
+  device layer behind the `soapy` feature — real enumeration, RX capture,
+  channel-power scan, and file-based TX (`--mode inject --iq-input`) — is
+  implemented and tested against the real library in CI with no hardware
+  attached (see section 5); what remains uncovered is actual
+  over-the-air transmission with physical radios. The control API's JSON
+  `inject` command (frame-level) also remains stubbed — file-based TX via
+  `--iq-input` is the real path.
 - TC/XDP probes other than the ones exercised above; most offensive features
   remain research scaffolding with documented-but-unvalidated hook points.
 - Offense eBPF programs other than `shadow_rrc_redirect`,

@@ -14,3 +14,5 @@ pub mod protocol_dissectors;
 pub mod rf_selftest;
 pub mod sdr_integration;
 pub mod sixg_sim;
+#[cfg(feature = "soapy")]
+pub mod soapy;

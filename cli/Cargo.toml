@@ -20,6 +20,8 @@ ebpf-bin = [
     "defense/ebpf-bin",
     "offense/ebpf-bin",
 ]
+# Real SDR hardware for the sdr-bridge subcommand (requires libSoapySDR).
+soapy = ["staticzero-tools/soapy"]
 
 [dependencies]
 anyhow = "1"

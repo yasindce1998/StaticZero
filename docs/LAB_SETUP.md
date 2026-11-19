@@ -76,6 +76,15 @@ For getting started with StaticZero telecom features:
 
 ### SDR-to-Feature Mapping
 
+> **Software prerequisite for real hardware control:** the sdr-bridge
+> drives these radios through SoapySDR, which requires building from
+> source with the `soapy` feature
+> (`cargo build -p staticzero-tools --features soapy`; needs
+> `libsoapysdr-dev` on Debian/Ubuntu or `soapysdr` on Arch at build and
+> runtime — release binaries ship the stub device layer). Confirm device
+> attachment with `staticzero sdr-bridge --mode list`, which enumerates
+> attached devices (and prints `[]` when none are present).
+
 | Feature | Minimum SDR | Notes |
 |---------|------------|-------|
 | Cell scanning (F92) | RTL-SDR | Passive only |

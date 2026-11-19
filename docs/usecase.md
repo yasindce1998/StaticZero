@@ -179,7 +179,7 @@ Test Matter onboarding and access-control robustness in a home lab.
 Catalog adversarial ML, RIS, THz, and PQC downgrade surfaces ahead of 3GPP Release 20 specification.
 
 **Actors:** 6G research labs, standards delegates, telecom vendors  
-**Scenario:** Review [NEXTGEN_RESEARCH.md](NEXTGEN_RESEARCH.md) for the standards basis. Deploy F195–F200 scaffolding in simulation (OpenAIInterface/Colosseum-class testbeds). Validate Modules 66/67/70 detection logic on synthetic model-integrity and handshake traces; correlate AI-RAN tampering + PQC downgrade into the `AiRanCompromise` threat.
+**Scenario:** Review [NEXTGEN_RESEARCH.md](NEXTGEN_RESEARCH.md) for the standards basis. Deploy F195–F200 scaffolding in simulation (OpenAIInterface/Colosseum-class testbeds). Validate Modules 66/67/70 detection logic on synthetic model-integrity and handshake traces; correlate AI-RAN tampering + PQC downgrade into the `AiRanCompromise` threat. Modules 66/67/70 are now live via `6g-sim` verdicts (`--tool-input airan|pqc|noncred`): the tool analyzes simulation trace events into tagged verdicts, and tamper + downgrade verdicts correlate into `AiRanCompromise` end-to-end.
 
 ---
 
@@ -349,16 +349,25 @@ sudo ./target/release/staticzero-defense --sixg_defense
 ./target/release/osnma-verify selftest        # HMAC/SHA known-answer tests
 ./target/release/d2c-monitor < cells.jsonl    # spoofed satellite cell scoring
 ./target/release/mlo-analyzer < frames.jsonl  # Wi-Fi 7 MLO attack findings
+./target/release/6g-sim analyze < trace.jsonl # 6G control-plane verdicts (ai_ran/pqc/non_credential)
+
+# 6G lab scenario generation (synthetic traces, no testbed required)
+./target/release/6g-sim generate --scenario ai-ran-tamper --count 6
+# scenarios: clean, ai-ran-tamper, pqc-downgrade, non-credential-abuse
 ```
 
 ### Feeding Tool Verdicts into the Defense Engine
 
 Defense Modules 56 (Wi-Fi 7 MLO Integrity), 61 (D2C Satellite Cell
-Verification), and 62 (GNSS Authentication Monitor/OSNMA) are driven by
-userspace tool verdicts instead of kernel eBPF probes. The daemon accepts
+Verification), 62 (GNSS Authentication Monitor/OSNMA), 66 (AI-RAN Model
+Integrity), 67 (PQC Handshake Downgrade Detection), and 70
+(Network-of-Networks Credential Monitor) are driven by userspace tool
+verdicts instead of kernel eBPF probes. The daemon accepts
 `--tool-input KIND=PATH` (repeatable), where KIND is `mlo` (Module 56, fed by
-`mlo-analyzer`), `d2c` (Module 61, fed by `d2c-monitor`), or `osnma`
-(Module 62, fed by `osnma-verify`). PATH is a JSON-lines verdict file that is
+`mlo-analyzer`), `d2c` (Module 61, fed by `d2c-monitor`), `osnma`
+(Module 62, fed by `osnma-verify`), `airan` (Module 66, fed by `6g-sim`),
+`pqc` (Module 67, fed by `6g-sim`), or `noncred` (Module 70, fed by
+`6g-sim`). PATH is a JSON-lines verdict file that is
 followed for appends, or `-` for stdin:
 
 ```bash
@@ -367,7 +376,22 @@ followed for appends, or `-` for stdin:
 
 # Follow a d2c-monitor verdict file for Module 61
 sudo ./target/release/staticzero-defense --d2c_defense --tool-input d2c=/var/log/d2c-monitor.jsonl
+
+# Feed 6g-sim verdicts into Modules 66/67/70 (file-based; only one stdin is
+# possible per invocation, so use a verdict file for multi-kind setups)
+./target/release/6g-sim analyze trace.jsonl > /tmp/sixg.jsonl
+sudo ./target/release/staticzero-defense --sixg_defense --tool-input airan=/tmp/sixg.jsonl --tool-input pqc=/tmp/sixg.jsonl --tool-input noncred=/tmp/sixg.jsonl
 ```
+
+For 6G labs without a testbed, `6g-sim generate --scenario
+<clean|ai-ran-tamper|pqc-downgrade|non-credential-abuse> --count N` emits
+synthetic control-plane trace events that `6g-sim analyze` converts into
+verdicts: model integrity hashes may only change with a version advance
+(Module 66), quantum-safe handshakes (ML-KEM class) must not fall back to
+classic crypto (Module 67), and credentials must not cross member networks
+unauthorized (Module 70). End-to-end, tool verdicts correlate into the
+`AiRanCompromise` (confidence 0.90, severity 5) and `PqcDowngrade`
+(confidence 0.85, severity 4) compound threats.
 
 Tool-sourced alerts flow through the full pipeline — metrics, SQLite
 persistence, correlation engine, and HTTP API — exactly like eBPF alerts.

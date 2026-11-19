@@ -13,11 +13,11 @@ eBPF-based telecom security research framework covering 2G through 5G, non-terre
 
 > **Implementation status:** The capability tables are a research catalog, not
 > proof of working live interception/detection. Defense Module 22 has an
-> experimental passive `openat` adapter; Modules 56, 61, and 62 have validated
-> userspace tool adapters (mlo-analyzer / d2c-monitor / osnma-verify verdict
-> streams via `--tool-input`); the remaining modules (16–21, 23–55, 57–60,
-> 63–70) currently lack validated attachment adapters and are reported as
-> unsupported by the loader.
+> experimental passive `openat` adapter; Modules 56, 61, 62, 66, 67, and 70
+> have validated userspace tool adapters (mlo-analyzer / d2c-monitor /
+> osnma-verify / 6g-sim verdict streams via `--tool-input`); the remaining
+> modules (16–21, 23–55, 57–60, and 63–69) currently lack validated
+> attachment adapters and are reported as unsupported by the loader.
 > SDR hardware methods also include scaffolding. Lab-tier smoke tests cover
 > offensive kprobe attachment, XDP/TC traffic-path probes, real modem device
 > nodes, and the sdr-bridge TX pipeline — see
@@ -376,11 +376,11 @@ staticzero/
 | 63 | NTN Regenerative Payload Anomaly | Feeder-link NGAP from unregistered gNB-on-board, ephemeris/TA mismatch |
 | 64 | Wi-Fi Sensing Privacy Guard (802.11bf) | 802.11bf sensing poll floods, unsolicited measurement requests |
 | 65 | FRMCS/LDACS Transport Signaling Integrity | Train/aircraft signaling from unauthorized sources, procedure violations |
-| 66 | AI-RAN Model Integrity Monitor | Model/perturbation anomalies, adversarial inference patterns |
-| 67 | PQC Handshake Downgrade Detection | Quantum-safe → classic fallback transitions, suite inconsistency |
+| 66 | AI-RAN Model Integrity Monitor | Model/perturbation anomalies, adversarial inference patterns — userspace adapter via 6g-sim |
+| 67 | PQC Handshake Downgrade Detection | Quantum-safe → classic fallback transitions, suite inconsistency — userspace adapter via 6g-sim |
 | 68 | LEO PNT Signal Authentication | C/N0 ceiling violations, doppler slope anomalies, unauthenticated beams |
 | 69 | Wi-Fi 8 MAPC / HaLow Integrity | Rogue coordination set members, S1G beacon anomalies |
-| 70 | Network-of-Networks Credential Monitor | Credential reuse across non-3GPP networks, trust fabric violations |
+| 70 | Network-of-Networks Credential Monitor | Credential reuse across non-3GPP networks, trust fabric violations — userspace adapter via 6g-sim |
 
 ## Correlation Engine
 
@@ -427,6 +427,7 @@ Hardware-abstracted radio interface supporting HackRF, bladeRF, USRP, RTL-SDR, a
 - **`osnma-verify`** — Galileo OSNMA verification: NMA header parsing, TESLA key chain checks, and MAC verification with in-tree HMAC-SHA256 (RFC 2104/4231 tested). Upgrades GNSS spoofing detection from heuristics to cryptographic verification. `osnma-verify selftest` runs known-answer tests.
 - **`d2c-monitor`** — Direct-to-Cell satellite cell monitor: physics consistency checks (timing advance, doppler, ephemeris, RSRP) that flag spoofed satellite cells — the satellite equivalent of an IMSI catcher. JSON-lines in/out.
 - **`mlo-analyzer`** — Wi-Fi 7 Multi-Link Operation analyzer: per-MLD link tracking that detects link desynchronization, key separation abuse, AKM suite inconsistency, and link flapping. JSON-lines in/out.
+- **`6g-sim`** — 6G control-plane trace analyzer and scenario generator: ingests JSON-lines trace events from 6G simulation testbeds (Colosseum-class) and emits AI-RAN model integrity, PQC downgrade, and network-of-networks credential verdicts for Modules 66/67/70. `6g-sim generate` emits synthetic traces for lab scenarios. JSON-lines in/out.
 
 ## Documentation
 
@@ -496,6 +497,11 @@ sudo ./target/release/staticzero-offense --enable-nextgen-wifi --enable-d2c --en
 # Feed tool verdicts into the defense engine (Modules 56/61/62)
 ./target/release/mlo-analyzer < mlo_frames.jsonl | sudo ./target/release/staticzero-defense --modules 56 --tool-input mlo=-
 sudo ./target/release/staticzero-defense --d2c_defense --tool-input d2c=/var/log/d2c-monitor.jsonl
+
+# Feed 6g-sim verdicts into the defense engine (Modules 66/67/70; use a file
+# per kind — only one stdin is possible per invocation)
+./target/release/6g-sim generate --scenario ai-ran-tamper --count 6 | ./target/release/6g-sim analyze > /tmp/sixg.jsonl
+sudo ./target/release/staticzero-defense --sixg_defense --tool-input airan=/tmp/sixg.jsonl --tool-input pqc=/tmp/sixg.jsonl --tool-input noncred=/tmp/sixg.jsonl
 
 # Lab-tier smoke tests: offensive probes, traffic path, real modem devices,
 # RF TX pipeline (see docs/LAB_SMOKE_TESTS.md)

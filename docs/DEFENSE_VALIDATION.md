@@ -8,14 +8,18 @@ registry in `defense/src/probes.rs` is the source of truth for attachment suppor
 | Modules | Runtime status |
 | --- | --- |
 | 22 | Experimental passive adapter for `syscalls/sys_enter_openat` |
-| 56, 61, 62 | Userspace tool adapters: active when `--tool-input mlo=<path>` / `d2c=<path>` / `osnma=<path>` is configured (fed by mlo-analyzer / d2c-monitor / osnma-verify verdict streams); unsupported without it, failed if the path is unreadable |
-| 16–21, 23–55, 57–60, 63–70 | Unsupported for live attachment: expect decoded protocol values, with no validated kernel/userspace adapter yet |
+| 56, 61, 62, 66, 67, 70 | Userspace tool adapters: active when `--tool-input mlo=<path>` / `d2c=<path>` / `osnma=<path>` / `airan=<path>` / `pqc=<path>` / `noncred=<path>` is configured (fed by mlo-analyzer / d2c-monitor / osnma-verify / 6g-sim verdict streams); unsupported without it, failed if the path is unreadable |
+| 16–21, 23–55, 57–60, 63–69 | Unsupported for live attachment: expect decoded protocol values, with no validated kernel/userspace adapter yet |
 
-Modules 56 (Wi-Fi 7 MLO integrity), 61 (D2C satellite cell verification), and
-62 (GNSS authentication/OSNMA) are driven by userspace tool adapters instead of
-kernel eBPF probes. The daemon accepts `--tool-input KIND=PATH` (repeatable),
-where KIND is `mlo` (Module 56, fed by `mlo-analyzer`), `d2c` (Module 61, fed
-by `d2c-monitor`), or `osnma` (Module 62, fed by `osnma-verify`), and PATH is
+Modules 56 (Wi-Fi 7 MLO integrity), 61 (D2C satellite cell verification),
+62 (GNSS authentication/OSNMA), 66 (AI-RAN model integrity), 67 (PQC
+handshake downgrade), and 70 (network-of-networks credential monitoring)
+are driven by userspace tool adapters instead of kernel eBPF probes. The
+daemon accepts `--tool-input KIND=PATH` (repeatable), where KIND is `mlo`
+(Module 56, fed by `mlo-analyzer`), `d2c` (Module 61, fed by
+`d2c-monitor`), `osnma` (Module 62, fed by `osnma-verify`), `airan`
+(Module 66, fed by `6g-sim`), `pqc` (Module 67, fed by `6g-sim`), or
+`noncred` (Module 70, fed by `6g-sim`), and PATH is
 a JSON-lines verdict file that is followed for appends, or `-` for stdin.
 Verdicts are converted to DefenseAlerts and flow through the same correlation
 pipeline as eBPF alerts. `--doctor` reports these modules as available when

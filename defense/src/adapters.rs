@@ -22,7 +22,10 @@ use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 use tokio::sync::mpsc;
 
-use common::{DefenseAlert, ALERT_D2C_CELL_SPOOF, ALERT_GNSS_AUTH_FAILURE, ALERT_MLO_INTEGRITY};
+use common::{
+    DefenseAlert, ALERT_AI_RAN_INTEGRITY, ALERT_D2C_CELL_SPOOF, ALERT_GNSS_AUTH_FAILURE,
+    ALERT_MLO_INTEGRITY, ALERT_NON_CREDENTIAL_ABUSE, ALERT_PQC_DOWNGRADE,
+};
 
 /// Which next-generation tool feeds a module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +36,12 @@ pub enum ToolKind {
     D2c,
     /// Galileo OSNMA verifier (Module 62).
     Osnma,
+    /// 6G AI-RAN model integrity traces (Module 66).
+    Airan,
+    /// 6G PQC handshake traces (Module 67).
+    Pqc,
+    /// 6G network-of-networks credential traces (Module 70).
+    NonCred,
 }
 
 impl ToolKind {
@@ -41,6 +50,9 @@ impl ToolKind {
             Self::Mlo => "mlo",
             Self::D2c => "d2c",
             Self::Osnma => "osnma",
+            Self::Airan => "airan",
+            Self::Pqc => "pqc",
+            Self::NonCred => "noncred",
         }
     }
 
@@ -49,8 +61,11 @@ impl ToolKind {
             "mlo" => Ok(Self::Mlo),
             "d2c" => Ok(Self::D2c),
             "osnma" => Ok(Self::Osnma),
+            "airan" => Ok(Self::Airan),
+            "pqc" => Ok(Self::Pqc),
+            "noncred" => Ok(Self::NonCred),
             other => bail!(
-                "unknown tool kind {other:?}; expected mlo, d2c, or osnma (e.g. --tool-input mlo=/path/verdicts.jsonl)"
+                "unknown tool kind {other:?}; expected mlo, d2c, osnma, airan, pqc, or noncred (e.g. --tool-input mlo=/path/verdicts.jsonl)"
             ),
         }
     }
@@ -62,6 +77,9 @@ pub fn tool_kind_for_module(module: u8) -> Option<ToolKind> {
         56 => Some(ToolKind::Mlo),
         61 => Some(ToolKind::D2c),
         62 => Some(ToolKind::Osnma),
+        66 => Some(ToolKind::Airan),
+        67 => Some(ToolKind::Pqc),
+        70 => Some(ToolKind::NonCred),
         _ => None,
     }
 }
@@ -158,6 +176,44 @@ pub struct OsnmaVerdictWire {
     pub spoofed: bool,
 }
 
+/// One `6g-sim` AI-RAN model integrity verdict line.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AiRanVerdictWire {
+    /// Control-plane domain; verdicts in one domain correlate together.
+    #[serde(default = "default_domain")]
+    pub domain: String,
+    pub model_id: String,
+    pub tampered: bool,
+    pub version: u32,
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// One `6g-sim` PQC handshake verdict line.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PqcVerdictWire {
+    #[serde(default = "default_domain")]
+    pub domain: String,
+    pub peer: String,
+    pub downgraded: bool,
+    pub suite: String,
+}
+
+/// One `6g-sim` network-of-networks credential verdict line.
+#[derive(Debug, Clone, Deserialize)]
+pub struct NonCredVerdictWire {
+    #[serde(default = "default_domain")]
+    pub domain: String,
+    pub credential: String,
+    pub source_network: String,
+    pub target_network: String,
+    pub crossed: bool,
+}
+
+fn default_domain() -> String {
+    "core-1".to_string()
+}
+
 // ── Conversions ──────────────────────────────────────────────────────────────
 
 fn mlo_severity(severity: &str) -> u32 {
@@ -241,6 +297,57 @@ pub fn osnma_verdict_to_alert(verdict: &OsnmaVerdictWire) -> Option<DefenseAlert
     ))
 }
 
+/// Convert a `6g-sim` AI-RAN verdict into a Module 66 alert.
+/// Returns `None` for models that passed the integrity invariants.
+/// The correlation context is the control-plane domain so AI-RAN and PQC
+/// verdicts from one domain compound; the model hash rides in the detail.
+pub fn ai_ran_verdict_to_alert(verdict: &AiRanVerdictWire) -> Option<DefenseAlert> {
+    if !verdict.tampered {
+        return None;
+    }
+    let detail = (verdict.version as u64) << 32 | fnv1a64(&verdict.model_id) & 0xFFFF_FFFF;
+    Some(alert(
+        ALERT_AI_RAN_INTEGRITY,
+        5,
+        fnv1a64(&verdict.domain),
+        detail,
+        now_ns(),
+    ))
+}
+
+/// Convert a `6g-sim` PQC verdict into a Module 67 alert.
+/// Returns `None` for handshakes that stayed quantum-safe.
+pub fn pqc_verdict_to_alert(verdict: &PqcVerdictWire) -> Option<DefenseAlert> {
+    if !verdict.downgraded {
+        return None;
+    }
+    let detail = fnv1a64(&verdict.peer) & 0xFFFF_FFFF;
+    Some(alert(
+        ALERT_PQC_DOWNGRADE,
+        4,
+        fnv1a64(&verdict.domain),
+        detail,
+        now_ns(),
+    ))
+}
+
+/// Convert a `6g-sim` network-of-networks verdict into a Module 70 alert.
+/// Returns `None` for authorized credential use.
+pub fn non_cred_verdict_to_alert(verdict: &NonCredVerdictWire) -> Option<DefenseAlert> {
+    if !verdict.crossed {
+        return None;
+    }
+    let detail = (fnv1a64(&verdict.credential) & 0xFFFF_FFFF)
+        | (fnv1a64(&verdict.source_network) & 0xFFFF) << 48;
+    Some(alert(
+        ALERT_NON_CREDENTIAL_ABUSE,
+        4,
+        fnv1a64(&verdict.domain),
+        detail,
+        now_ns(),
+    ))
+}
+
 fn line_to_alert(kind: ToolKind, line: &str) -> Result<Option<DefenseAlert>> {
     match kind {
         ToolKind::Mlo => {
@@ -257,6 +364,21 @@ fn line_to_alert(kind: ToolKind, line: &str) -> Result<Option<DefenseAlert>> {
             let verdict: OsnmaVerdictWire =
                 serde_json::from_str(line).context("parse osnma-verify verdict")?;
             Ok(osnma_verdict_to_alert(&verdict))
+        }
+        ToolKind::Airan => {
+            let verdict: AiRanVerdictWire =
+                serde_json::from_str(line).context("parse 6g-sim ai_ran verdict")?;
+            Ok(ai_ran_verdict_to_alert(&verdict))
+        }
+        ToolKind::Pqc => {
+            let verdict: PqcVerdictWire =
+                serde_json::from_str(line).context("parse 6g-sim pqc verdict")?;
+            Ok(pqc_verdict_to_alert(&verdict))
+        }
+        ToolKind::NonCred => {
+            let verdict: NonCredVerdictWire =
+                serde_json::from_str(line).context("parse 6g-sim non_credential verdict")?;
+            Ok(non_cred_verdict_to_alert(&verdict))
         }
     }
 }
@@ -495,6 +617,90 @@ mod tests {
         let leo = alert(ALERT_LEO_PNT, 4, 19, 0, 2_000_000_000);
         let threat = engine.ingest_alert(&leo).expect("compound threat");
         assert_eq!(threat.category, ThreatCategory::GnssSpoofing);
+    }
+
+    fn airan_line(tampered: bool) -> String {
+        format!(
+            r#"{{"kind":"ai_ran","domain":"core-1","model_id":"airan-phy-01","tampered":{tampered},"version":4,"reason":"integrity hash changed without version advance"}}"#
+        )
+    }
+
+    fn pqc_line(downgraded: bool) -> String {
+        format!(
+            r#"{{"kind":"pqc","domain":"core-1","peer":"amf-1","downgraded":{downgraded},"suite":"rsa-2048"}}"#
+        )
+    }
+
+    fn noncred_line(crossed: bool) -> String {
+        format!(
+            r#"{{"kind":"non_credential","domain":"core-1","credential":"cred-042","source_network":"sat-net","target_network":"wlan-net","crossed":{crossed}}}"#
+        )
+    }
+
+    #[test]
+    fn ai_ran_verdicts_convert_only_when_tampered() {
+        let clean: AiRanVerdictWire = serde_json::from_str(&airan_line(false)).unwrap();
+        assert!(ai_ran_verdict_to_alert(&clean).is_none());
+
+        let tampered: AiRanVerdictWire = serde_json::from_str(&airan_line(true)).unwrap();
+        let alert = ai_ran_verdict_to_alert(&tampered).unwrap();
+        assert_eq!(alert.alert_type, ALERT_AI_RAN_INTEGRITY);
+        assert_eq!(alert.severity, 5);
+        assert_ne!(alert.context, 0);
+    }
+
+    #[test]
+    fn pqc_verdicts_convert_only_when_downgraded() {
+        let clean: PqcVerdictWire = serde_json::from_str(&pqc_line(false)).unwrap();
+        assert!(pqc_verdict_to_alert(&clean).is_none());
+
+        let downgraded: PqcVerdictWire = serde_json::from_str(&pqc_line(true)).unwrap();
+        let alert = pqc_verdict_to_alert(&downgraded).unwrap();
+        assert_eq!(alert.alert_type, ALERT_PQC_DOWNGRADE);
+        assert_eq!(alert.severity, 4);
+        assert_ne!(alert.context, 0);
+    }
+
+    #[test]
+    fn non_cred_verdicts_convert_only_when_crossed() {
+        let clean: NonCredVerdictWire = serde_json::from_str(&noncred_line(false)).unwrap();
+        assert!(non_cred_verdict_to_alert(&clean).is_none());
+
+        let crossed: NonCredVerdictWire = serde_json::from_str(&noncred_line(true)).unwrap();
+        let alert = non_cred_verdict_to_alert(&crossed).unwrap();
+        assert_eq!(alert.alert_type, ALERT_NON_CREDENTIAL_ABUSE);
+        assert_eq!(alert.severity, 4);
+        assert_ne!(alert.context, 0);
+    }
+
+    #[test]
+    fn sixg_tool_alerts_correlate_into_ai_ran_compromise() {
+        // The end-to-end promise: 6g-sim verdicts fed through the pipeline
+        // correlate into the AiRanCompromise compound threat.
+        let tampered: AiRanVerdictWire = serde_json::from_str(&airan_line(true)).unwrap();
+        let ai_ran_alert = ai_ran_verdict_to_alert(&tampered).unwrap();
+        let downgraded: PqcVerdictWire = serde_json::from_str(&pqc_line(true)).unwrap();
+        let pqc_alert = pqc_verdict_to_alert(&downgraded).unwrap();
+
+        let mut engine = TelecomCorrelationEngine::new(60);
+        assert!(engine.ingest_alert(&ai_ran_alert).is_none());
+        let threat = engine.ingest_alert(&pqc_alert).expect("compound threat");
+        assert_eq!(threat.category, ThreatCategory::AiRanCompromise);
+        assert_eq!(threat.severity, 5);
+    }
+
+    #[test]
+    fn repeated_pqc_tool_alerts_correlate_into_pqc_downgrade() {
+        // Two downgraded handshakes in one window escalate to the
+        // standalone PqcDowngrade pattern (harvest-now-decrypt-later).
+        let downgraded: PqcVerdictWire = serde_json::from_str(&pqc_line(true)).unwrap();
+        let pqc_alert = pqc_verdict_to_alert(&downgraded).unwrap();
+
+        let mut engine = TelecomCorrelationEngine::new(60);
+        assert!(engine.ingest_alert(&pqc_alert).is_none());
+        let threat = engine.ingest_alert(&pqc_alert).expect("compound threat");
+        assert_eq!(threat.category, ThreatCategory::PqcDowngrade);
+        assert_eq!(threat.severity, 4);
     }
 
     #[test]

@@ -169,10 +169,13 @@ pub fn format_alert_details(alert: &DefenseAlert) -> String {
             format!("entity_hash={}, procedure={}", alert.context, detail_u64)
         }
         ALERT_AI_RAN_INTEGRITY => {
-            format!("model_hash={}, perturbation={}", alert.context, detail_u64)
+            format!(
+                "domain_hash={}, model/version={}",
+                alert.context, detail_u64
+            )
         }
         ALERT_PQC_DOWNGRADE => {
-            format!("peer_hash={}, suite/fallback={}", alert.context, detail_u64)
+            format!("domain_hash={}, peer_hash={}", alert.context, detail_u64)
         }
         ALERT_LEO_PNT => {
             format!("sat_id={}, cn0/doppler={}", alert.context, detail_u64)
@@ -182,7 +185,7 @@ pub fn format_alert_details(alert: &DefenseAlert) -> String {
         }
         ALERT_NON_CREDENTIAL_ABUSE => {
             format!(
-                "credential_hash={}, source_network={}",
+                "domain_hash={}, credential/source={}",
                 alert.context, detail_u64
             )
         }

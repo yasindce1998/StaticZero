@@ -286,18 +286,20 @@ pub static PROBES: &[ProbeSpec] = &[
         "FRMCS/LDACS Transport Signaling Integrity",
         NextGenIot
     ),
-    pending!(
-        66,
-        "detect_ai_ran_integrity",
-        "AI-RAN Model Integrity Monitor",
-        SixG
-    ),
-    pending!(
-        67,
-        "detect_pqc_downgrade",
-        "PQC Handshake Downgrade Detection",
-        SixG
-    ),
+    ProbeSpec {
+        module: 66,
+        program: "detect_ai_ran_integrity",
+        description: "AI-RAN Model Integrity Monitor",
+        group: ProbeGroup::SixG,
+        attachment: Attachment::Userspace { tool: "6g-sim" },
+    },
+    ProbeSpec {
+        module: 67,
+        program: "detect_pqc_downgrade",
+        description: "PQC Handshake Downgrade Detection",
+        group: ProbeGroup::SixG,
+        attachment: Attachment::Userspace { tool: "6g-sim" },
+    },
     pending!(68, "detect_leo_pnt", "LEO PNT Signal Authentication", D2c),
     pending!(
         69,
@@ -305,12 +307,13 @@ pub static PROBES: &[ProbeSpec] = &[
         "Wi-Fi 8 MAPC / HaLow Integrity",
         NextGenWifi
     ),
-    pending!(
-        70,
-        "detect_non_credential",
-        "Network-of-Networks Credential Monitor",
-        SixG
-    ),
+    ProbeSpec {
+        module: 70,
+        program: "detect_non_credential",
+        description: "Network-of-Networks Credential Monitor",
+        group: ProbeGroup::SixG,
+        attachment: Attachment::Userspace { tool: "6g-sim" },
+    },
 ];
 
 pub fn select_probes(modules: &[u8], groups: &[ProbeGroup]) -> Result<Vec<&'static ProbeSpec>> {
@@ -526,7 +529,7 @@ mod tests {
             );
             assert_eq!(
                 matches!(spec.attachment, Attachment::Userspace { .. }),
-                matches!(spec.module, 56 | 61 | 62)
+                matches!(spec.module, 56 | 61 | 62 | 66 | 67 | 70)
             );
         }
     }
@@ -564,6 +567,29 @@ mod tests {
         )];
         let report = userspace_report(spec, tool, &inputs);
         assert_eq!(report.status, ProbeStatus::Unsupported);
+    }
+
+    #[test]
+    fn sixg_modules_activate_with_their_own_kinds() {
+        for (module, kind, tool) in [
+            (66u8, crate::adapters::ToolKind::Airan, "6g-sim"),
+            (67, crate::adapters::ToolKind::Pqc, "6g-sim"),
+            (70, crate::adapters::ToolKind::NonCred, "6g-sim"),
+        ] {
+            let spec = PROBES
+                .iter()
+                .find(|spec| spec.module == module)
+                .expect("module registered");
+            let Attachment::Userspace { tool: attached } = spec.attachment else {
+                panic!("module {module} must be a userspace module");
+            };
+            assert_eq!(attached, tool);
+
+            let inputs = vec![(kind, std::path::PathBuf::from("/tmp/sixg.jsonl"))];
+            let report = userspace_report(spec, attached, &inputs);
+            assert_eq!(report.status, ProbeStatus::Active, "module {module}");
+            assert!(report.detail.contains(tool), "module {module}");
+        }
     }
 
     #[test]

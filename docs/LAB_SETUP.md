@@ -710,11 +710,13 @@ sudo staticzero-defense \
 ### Scenario 16: 6G Simulation
 
 1. Set up simulation environment (Colosseum-class testbed or synthetic trace replay)
-2. Replay synthetic AI-RAN model-integrity violation traces
-3. Verify Module 66 detects model tampering: ALERT_AI_RAN_INTEGRITY
-4. Replay synthetic PQC handshake traces with ML-KEM → classic fallback
-5. Verify Module 67 detects downgrade: ALERT_PQC_DOWNGRADE
-6. Confirm correlation into `AiRanCompromise` compound threat (6G control plane compromise)
+2. Generate synthetic lab traces with 6g-sim (`./target/release/6g-sim generate --scenario ai-ran-tamper --count 6 > trace.jsonl`; scenarios: clean, ai-ran-tamper, pqc-downgrade, non-credential-abuse)
+3. Analyze the traces into tagged verdicts (`./target/release/6g-sim analyze trace.jsonl > /tmp/sixg.jsonl`) — integrity-hash changes without a version advance become `ai_ran` verdicts, ML-KEM → classic handshake fallbacks become `pqc` verdicts, unauthorized cross-network credential use becomes `non_credential` verdicts
+4. Feed the verdicts into the defense engine (`sudo ./target/release/staticzero-defense --sixg_defense --tool-input airan=/tmp/sixg.jsonl --tool-input pqc=/tmp/sixg.jsonl --tool-input noncred=/tmp/sixg.jsonl`)
+5. Verify Module 66 detects model tampering: ALERT_AI_RAN_INTEGRITY
+6. Verify Module 67 detects downgrade: ALERT_PQC_DOWNGRADE (repeated downgrades escalate to the `PqcDowngrade` threat)
+7. Verify Module 70 flags unauthorized credential crossing: ALERT_NON_CREDENTIAL_ABUSE
+8. Confirm correlation into `AiRanCompromise` compound threat (6G control plane compromise, confidence 0.90, severity 5)
 
 ---
 

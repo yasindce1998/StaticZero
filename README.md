@@ -473,7 +473,9 @@ cargo build --release -p staticzero-offense --features ebpf-bin
 sudo ./target/release/staticzero-defense --all
 
 # Run offense loader (authorized testing only). Missing kernel hook points
-# (e.g. sdr_rx_callback) disable that one feature instead of crashing.
+# (e.g. sdr_rx_callback) and interface conflicts disable that one feature
+# instead of crashing. The kernel allows one XDP program per interface —
+# use dedicated interfaces (--sdr-iface/--wpan-iface/...) per XDP feature.
 sudo ./target/release/staticzero-offense --enable-telecom --gtp-iface gtp0
 
 # Run with satellite modules

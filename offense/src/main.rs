@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use aya::maps::RingBuf;
-use aya::programs::{SchedClassifier, Xdp, XdpFlags};
+use aya::programs::SchedClassifier;
 use aya::BpfLoader;
 use clap::Parser;
 use tokio::signal;
@@ -13,7 +13,7 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use common::EventHeader;
-use staticzero_offense::attach_kprobe;
+use staticzero_offense::{attach_kprobe, attach_xdp};
 
 // The compiled eBPF object is embedded so release binaries are
 // self-contained. `cargo xtask build-ebpf` must run before building this
@@ -228,11 +228,9 @@ async fn main() -> Result<()> {
         attach_kprobes!(kprobes);
 
         // XDP on GTP interface for tunnel hijacking
-        if let Some(prog) = bpf.program_mut("shadow_gtp_hijack") {
-            let xdp: &mut Xdp = prog.try_into()?;
-            xdp.load()?;
-            xdp.attach(&cli.gtp_iface, XdpFlags::default())?;
-            info!("F94: GTP Tunnel Hijacking enabled on {}", cli.gtp_iface);
+        match attach_xdp(&mut bpf, "shadow_gtp_hijack", &cli.gtp_iface) {
+            Ok(()) => info!("F94: GTP Tunnel Hijacking enabled on {}", cli.gtp_iface),
+            Err(error) => warn!("F94: GTP Tunnel Hijacking not attached, skipping: {error:#}"),
         }
 
         // TC classifiers for SS7/Diameter/NGAP/protocol downgrade
@@ -275,14 +273,14 @@ async fn main() -> Result<()> {
         attach_kprobes!(advanced_kprobes);
 
         // XDP for WiFi calling exploitation
-        if let Some(prog) = bpf.program_mut("shadow_wifi_calling_exploit") {
-            let xdp: &mut Xdp = prog.try_into()?;
-            xdp.load()?;
-            xdp.attach(&cli.wifi_iface, XdpFlags::default())?;
-            info!(
+        match attach_xdp(&mut bpf, "shadow_wifi_calling_exploit", &cli.wifi_iface) {
+            Ok(()) => info!(
                 "F104: WiFi Calling Exploitation enabled on {}",
                 cli.wifi_iface
-            );
+            ),
+            Err(error) => {
+                warn!("F104: WiFi Calling Exploitation not attached, skipping: {error:#}")
+            }
         }
 
         // TC classifiers for advanced telecom
@@ -345,14 +343,14 @@ async fn main() -> Result<()> {
         attach_kprobes!(kprobes_5g);
 
         // XDP on SDR interface for jamming evasion
-        if let Some(prog) = bpf.program_mut("shadow_jamming_evasion") {
-            let xdp: &mut Xdp = prog.try_into()?;
-            xdp.load()?;
-            xdp.attach(&cli.sdr_iface, XdpFlags::default())?;
-            info!(
+        match attach_xdp(&mut bpf, "shadow_jamming_evasion", &cli.sdr_iface) {
+            Ok(()) => info!(
                 "F115: Jamming Detection Evasion enabled on {}",
                 cli.sdr_iface
-            );
+            ),
+            Err(error) => {
+                warn!("F115: Jamming Detection Evasion not attached, skipping: {error:#}")
+            }
         }
 
         // TC classifiers for SBI/RAN/sidelink exploitation
@@ -420,11 +418,9 @@ async fn main() -> Result<()> {
         ];
 
         for (name, desc) in &sat_xdp_progs {
-            if let Some(prog) = bpf.program_mut(name) {
-                let xdp: &mut Xdp = prog.try_into()?;
-                xdp.load()?;
-                xdp.attach(&cli.sat_iface, XdpFlags::default())?;
-                info!("{} enabled on {}", desc, cli.sat_iface);
+            match attach_xdp(&mut bpf, name, &cli.sat_iface) {
+                Ok(()) => info!("{} enabled on {}", desc, cli.sat_iface),
+                Err(error) => warn!("{} not attached, skipping: {error:#}", desc),
             }
         }
 
@@ -590,11 +586,9 @@ async fn main() -> Result<()> {
         ];
 
         for (name, desc, iface) in &rf_xdp_progs {
-            if let Some(prog) = bpf.program_mut(name) {
-                let xdp: &mut Xdp = prog.try_into()?;
-                xdp.load()?;
-                xdp.attach(iface, XdpFlags::default())?;
-                info!("{} enabled on {}", desc, iface);
+            match attach_xdp(&mut bpf, name, iface) {
+                Ok(()) => info!("{} enabled on {}", desc, iface),
+                Err(error) => warn!("{} not attached, skipping: {error:#}", desc),
             }
         }
 
@@ -675,11 +669,9 @@ async fn main() -> Result<()> {
             ),
         ];
         for (name, desc, iface) in &xdp_progs {
-            if let Some(prog) = bpf.program_mut(name) {
-                let xdp: &mut Xdp = prog.try_into()?;
-                xdp.load()?;
-                xdp.attach(iface, XdpFlags::default())?;
-                info!("{} enabled on {}", desc, iface);
+            match attach_xdp(&mut bpf, name, iface) {
+                Ok(()) => info!("{} enabled on {}", desc, iface),
+                Err(error) => warn!("{} not attached, skipping: {error:#}", desc),
             }
         }
 
@@ -718,11 +710,9 @@ async fn main() -> Result<()> {
             &cli.sdr_iface,
         )];
         for (name, desc, iface) in &xdp_progs {
-            if let Some(prog) = bpf.program_mut(name) {
-                let xdp: &mut Xdp = prog.try_into()?;
-                xdp.load()?;
-                xdp.attach(iface, XdpFlags::default())?;
-                info!("{} enabled on {}", desc, iface);
+            match attach_xdp(&mut bpf, name, iface) {
+                Ok(()) => info!("{} enabled on {}", desc, iface),
+                Err(error) => warn!("{} not attached, skipping: {error:#}", desc),
             }
         }
 
@@ -770,11 +760,11 @@ async fn main() -> Result<()> {
         ];
         attach_kprobes!(kprobes);
 
-        if let Some(prog) = bpf.program_mut("shadow_uwb_key_relay") {
-            let xdp: &mut Xdp = prog.try_into()?;
-            xdp.load()?;
-            xdp.attach(&cli.sdr_iface, XdpFlags::default())?;
-            info!("F186: UWB Digital Key Relay enabled on {}", cli.sdr_iface);
+        match attach_xdp(&mut bpf, "shadow_uwb_key_relay", &cli.sdr_iface) {
+            Ok(()) => info!("F186: UWB Digital Key Relay enabled on {}", cli.sdr_iface),
+            Err(error) => {
+                warn!("F186: UWB Digital Key Relay not attached, skipping: {error:#}")
+            }
         }
     }
 
@@ -793,11 +783,9 @@ async fn main() -> Result<()> {
             &cli.wpan_iface,
         )];
         for (name, desc, iface) in &xdp_progs {
-            if let Some(prog) = bpf.program_mut(name) {
-                let xdp: &mut Xdp = prog.try_into()?;
-                xdp.load()?;
-                xdp.attach(iface, XdpFlags::default())?;
-                info!("{} enabled on {}", desc, iface);
+            match attach_xdp(&mut bpf, name, iface) {
+                Ok(()) => info!("{} enabled on {}", desc, iface),
+                Err(error) => warn!("{} not attached, skipping: {error:#}", desc),
             }
         }
 
@@ -857,11 +845,9 @@ async fn main() -> Result<()> {
             ),
         ];
         for (name, desc, iface) in &xdp_progs {
-            if let Some(prog) = bpf.program_mut(name) {
-                let xdp: &mut Xdp = prog.try_into()?;
-                xdp.load()?;
-                xdp.attach(iface, XdpFlags::default())?;
-                info!("{} enabled on {}", desc, iface);
+            match attach_xdp(&mut bpf, name, iface) {
+                Ok(()) => info!("{} enabled on {}", desc, iface),
+                Err(error) => warn!("{} not attached, skipping: {error:#}", desc),
             }
         }
 

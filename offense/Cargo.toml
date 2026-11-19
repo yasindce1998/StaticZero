@@ -1,6 +1,6 @@
 [package]
 name = "staticzero-offense"
-version = "0.5.0"
+version = "0.6.0"
 license = "MIT"
 edition = "2021"
 description = "User-space loader for StaticZero telecom exploitation eBPF programs"
@@ -23,7 +23,6 @@ ebpf-bin = []
 common = { package = "staticzero-common", path = "../common", features = ["user"] }
 anyhow = "1"
 aya = { version = "~0.12", features = ["async_tokio"] }
-aya-log = "~0.2"
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"

@@ -114,13 +114,51 @@ the variable unset the tool reports the hardware stage as skipped with the
 reason; with it set, any failure (missing tool, failed capture, insufficient
 energy) is a hard failure.
 
+## 5. Tool adapter + next-generation smoke test
+
+```bash
+cargo xtask build-ebpf --release
+cargo build --release -p staticzero-defense -p staticzero-offense --features ebpf-bin
+bash scripts/tool_adapter_smoke.sh
+```
+
+Runs the actual defense and offense binaries against the real kernel, in two
+parts, on an isolated dummy interface (`sz-smoke0`):
+
+**Defense part** proves the userspace tool-adapter pipeline end-to-end:
+
+- The daemon loads its real eBPF object, resolves the openat tracepoint
+  layout from tracefs, and activates Modules 56/66/67 as userspace adapters.
+- The `mlo`, `airan`, and `pqc` tool-input tasks follow real verdict files
+  and stream alerts through the same pipeline as eBPF alerts.
+- The JSON output must contain `ALERT_MLO_INTEGRITY`,
+  `ALERT_AI_RAN_INTEGRITY`, and `ALERT_PQC_DOWNGRADE` alerts plus the
+  correlated `AiRanCompromise` compound threat — produced from tool verdicts
+  alone.
+
+**Offense part** proves the next-generation loader paths:
+
+- `shadow_matter_passcode_attack` (F189), `shadow_6g_ris_manip` (F196), and
+  `shadow_6g_pqc_downgrade` (F198) attach as kprobes to `tcp_sendmsg`, a
+  mainline symbol — real `bpf_link_create` attachments.
+- `shadow_uwb_key_relay` (F186) attaches as an XDP program to the dummy
+  interface (native mode with skb fallback).
+- The kernel's one-XDP-program-per-interface limit is exercised: the second
+  XDP feature on the same interface must be skipped with a warning, never
+  crash the loader — matching the documented "missing hook points disable
+  that one feature" contract.
+- Features whose hook points are not mainline symbols (e.g.
+  `sdr_rx_callback`) are skipped gracefully; the loader reaches its running
+  state.
+
 ## What is still not covered
 
 - Real SDR transmission through the `sdr-bridge` control API (the JSON `inject`
   command still targets the stub device layer; only the self-test TX path is
   real).
-- TC/XDP probes other than the two exercised above; most offensive features
+- TC/XDP probes other than the ones exercised above; most offensive features
   remain research scaffolding with documented-but-unvalidated hook points.
 - Offense eBPF programs other than `shadow_rrc_redirect`,
-  `shadow_gtp_hijack`, and `shadow_protocol_downgrade` have no
+  `shadow_gtp_hijack`, `shadow_protocol_downgrade`, and the next-generation
+  programs exercised by the tool-adapter smoke test have no
   verifier-acceptance evidence.

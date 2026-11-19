@@ -96,6 +96,12 @@ jobs:
         timeout-minutes: 5
         run: bash scripts/offense_smoke.sh
 
+      - name: Tool adapter + next-gen smoke test (disposable runner VM)
+        timeout-minutes: 5
+        run: |
+          cargo build --release -p staticzero-defense -p staticzero-offense --features ebpf-bin
+          bash scripts/tool_adapter_smoke.sh
+
   test:
     name: Tests
     runs-on: ubuntu-latest

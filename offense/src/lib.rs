@@ -9,7 +9,7 @@
 //! attachment of a single program is impossible by design and unnecessary.
 
 use anyhow::{Context, Result};
-use aya::programs::KProbe;
+use aya::programs::{KProbe, Xdp};
 use aya::Bpf;
 
 /// Load `program` from the eBPF object and attach it as a kprobe on
@@ -31,6 +31,32 @@ pub fn attach_kprobe(bpf: &mut Bpf, program: &str, symbol: &str) -> Result<()> {
         .with_context(|| format!("attaching kprobe {program} to kernel symbol {symbol}"))?;
     // The probe runs on every CPU via the tracepoint program array; the perf
     // event opened by aya only keeps the event registered.
+    Ok(())
+}
+
+/// Load `program` from the eBPF object and attach it as an XDP program on
+/// `interface` (native mode with automatic skb fallback).
+///
+/// The kernel allows only ONE XDP program per interface: a second attach
+/// to the same interface fails with EBUSY. Callers should treat any
+/// failure as "feature unavailable on this interface", never as a crash —
+/// use a dedicated interface per XDP feature to run several at once.
+pub fn attach_xdp(bpf: &mut Bpf, program: &str, interface: &str) -> Result<()> {
+    let xdp: &mut Xdp = bpf
+        .program_mut(program)
+        .with_context(|| format!("program {program} missing from eBPF object"))?
+        .try_into()
+        .with_context(|| format!("program {program} is not an XDP program"))?;
+    xdp.load().context("verifier rejected program")?;
+    // Try native mode first; fall back to skb mode for drivers (or dummy
+    // interfaces) without native XDP support.
+    if xdp
+        .attach(interface, aya::programs::XdpFlags::default())
+        .is_err()
+    {
+        xdp.attach(interface, aya::programs::XdpFlags::SKB_MODE)
+            .with_context(|| format!("attaching XDP {program} to {interface}"))?;
+    }
     Ok(())
 }
 

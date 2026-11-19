@@ -29,7 +29,9 @@ run_as_root() {
     if [[ "$EUID" -eq 0 ]]; then
         "$@"
     else
-        sudo "$@"
+        # sudo env_reset strips the environment; pass RUST_LOG through
+        # explicitly (the offense loader logs via tracing/RUST_LOG).
+        sudo env RUST_LOG="${RUST_LOG:-info}" "$@"
     fi
 }
 

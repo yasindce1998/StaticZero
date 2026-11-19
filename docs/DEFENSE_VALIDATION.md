@@ -8,7 +8,19 @@ registry in `defense/src/probes.rs` is the source of truth for attachment suppor
 | Modules | Runtime status |
 | --- | --- |
 | 22 | Experimental passive adapter for `syscalls/sys_enter_openat` |
-| 16–21, 23–70 | Unsupported for live attachment: expect decoded protocol values, with no validated kernel/userspace adapter yet |
+| 56, 61, 62 | Userspace tool adapters: active when `--tool-input mlo=<path>` / `d2c=<path>` / `osnma=<path>` is configured (fed by mlo-analyzer / d2c-monitor / osnma-verify verdict streams); unsupported without it, failed if the path is unreadable |
+| 16–21, 23–55, 57–60, 63–70 | Unsupported for live attachment: expect decoded protocol values, with no validated kernel/userspace adapter yet |
+
+Modules 56 (Wi-Fi 7 MLO integrity), 61 (D2C satellite cell verification), and
+62 (GNSS authentication/OSNMA) are driven by userspace tool adapters instead of
+kernel eBPF probes. The daemon accepts `--tool-input KIND=PATH` (repeatable),
+where KIND is `mlo` (Module 56, fed by `mlo-analyzer`), `d2c` (Module 61, fed
+by `d2c-monitor`), or `osnma` (Module 62, fed by `osnma-verify`), and PATH is
+a JSON-lines verdict file that is followed for appends, or `-` for stdin.
+Verdicts are converted to DefenseAlerts and flow through the same correlation
+pipeline as eBPF alerts. `--doctor` reports these modules as available when
+their input is configured and readable, unsupported when not configured, and
+failed when configured but unreadable.
 
 Unsupported probe logic remains in the eBPF object for research, and userspace
 correlation rules remain testable. The loader never guesses a kernel symbol by

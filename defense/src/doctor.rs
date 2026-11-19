@@ -161,6 +161,7 @@ pub fn inspect(
     selected: &[&ProbeSpec],
     modem_path: &Path,
     allowed_pids: &[u32],
+    tool_inputs: &[(crate::adapters::ToolKind, std::path::PathBuf)],
 ) -> DoctorReport {
     let mut checks = vec![check(
         "platform",
@@ -234,23 +235,66 @@ pub fn inspect(
             .map_err(|e| anyhow::anyhow!("{e:#}")),
     ));
     let modules = selected.iter().map(|spec| {
-        let Attachment::TracePoint { category, event } = spec.attachment else {
-            let Attachment::Unsupported(reason) = spec.attachment else { unreachable!() };
-            return ProbeReport::new(spec, ProbeStatus::Unsupported, reason);
+        let result = match spec.attachment {
+            Attachment::TracePoint { category, event } => (|| -> Result<String> {
+                encode_modem_path(modem_path)?;
+                if allowed_pids.len() > 32 || allowed_pids.contains(&0) { bail!("at most 32 nonzero allowed PIDs are supported"); }
+                let object = object.as_ref().map_err(|e| anyhow::anyhow!("{e:#}"))?;
+                if !matches!(object.programs.get(spec.program).map(|program| &program.section), Some(ProgramSection::TracePoint)) {
+                    bail!("{} missing or wrong program type; rebuild defense eBPF object", spec.program);
+                }
+                for map in ["DEFENSE_ALERTS", "MODEM_MONITORED_PATH", "MODEM_FILENAME_OFFSET", "MODEM_ACCESS_PIDS"] {
+                    if !object.maps.contains_key(map) { bail!("required map {map} missing; rebuild defense eBPF object"); }
+                }
+                let (_, offset) = openat_layout()?;
+                Ok(format!("tracepoint {category}/{event}, filename offset {offset}; exact pathname {} (attempts only, no path resolution)", modem_path.display()))
+            })(),
+            Attachment::Userspace { tool } => {
+                return match crate::adapters::tool_kind_for_module(spec.module).and_then(|kind| {
+                    tool_inputs
+                        .iter()
+                        .find(|(input, _)| *input == kind)
+                        .map(|(_, path)| (kind, path.clone()))
+                }) {
+                    None => ProbeReport::new(
+                        spec,
+                        ProbeStatus::Unsupported,
+                        format!(
+                            "userspace adapter: configure --tool-input {}=<path> to feed {tool} verdicts",
+                            crate::adapters::tool_kind_for_module(spec.module)
+                                .map(|kind| kind.as_str())
+                                .unwrap_or("?")
+                        ),
+                    ),
+                    Some((kind, path)) => {
+                        if crate::adapters::tool_input_readable(&path) {
+                            ProbeReport::new(
+                                spec,
+                                ProbeStatus::Available,
+                                format!(
+                                    "userspace adapter ready: {tool} verdicts from {} (--tool-input {})",
+                                    path.display(),
+                                    kind.as_str()
+                                ),
+                            )
+                        } else {
+                            ProbeReport::new(
+                                spec,
+                                ProbeStatus::Failed,
+                                format!(
+                                    "tool input {} ({}) is not readable",
+                                    path.display(),
+                                    kind.as_str()
+                                ),
+                            )
+                        }
+                    }
+                };
+            }
+            Attachment::Unsupported(reason) => {
+                return ProbeReport::new(spec, ProbeStatus::Unsupported, reason);
+            }
         };
-        let result = (|| -> Result<String> {
-            encode_modem_path(modem_path)?;
-            if allowed_pids.len() > 32 || allowed_pids.contains(&0) { bail!("at most 32 nonzero allowed PIDs are supported"); }
-            let object = object.as_ref().map_err(|e| anyhow::anyhow!("{e:#}"))?;
-            if !matches!(object.programs.get(spec.program).map(|program| &program.section), Some(ProgramSection::TracePoint)) {
-                bail!("{} missing or wrong program type; rebuild defense eBPF object", spec.program);
-            }
-            for map in ["DEFENSE_ALERTS", "MODEM_MONITORED_PATH", "MODEM_FILENAME_OFFSET", "MODEM_ACCESS_PIDS"] {
-                if !object.maps.contains_key(map) { bail!("required map {map} missing; rebuild defense eBPF object"); }
-            }
-            let (_, offset) = openat_layout()?;
-            Ok(format!("tracepoint {category}/{event}, filename offset {offset}; exact pathname {} (attempts only, no path resolution)", modem_path.display()))
-        })();
         match result {
             Ok(detail) => ProbeReport::new(spec, ProbeStatus::Available, detail),
             Err(error) => ProbeReport::new(spec, ProbeStatus::Failed, format!("{error:#}")),

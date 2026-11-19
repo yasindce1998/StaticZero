@@ -358,6 +358,7 @@ async fn privileged_modem_openat_smoke() -> Result<()> {
         &selected,
         &fixture.watched(),
         &[],
+        &[],
     );
     report.print(false)?;
     ensure!(
@@ -372,7 +373,7 @@ async fn privileged_modem_openat_smoke() -> Result<()> {
         defense::doctor::openat_layout()?.1,
     )?;
     let mut ring = RingBuf::try_from(bpf.take_map("DEFENSE_ALERTS").unwrap())?;
-    let attached = attach_probes(&mut bpf, &selected);
+    let attached = attach_probes(&mut bpf, &selected, &[]);
     ensure!(
         attached.reports[0].status == ProbeStatus::Active,
         "attach failed: {:?}",
@@ -596,6 +597,7 @@ async fn modem_device_smoke(device: &std::path::Path) -> Result<()> {
         &selected,
         device,
         &[],
+        &[],
     );
     report.print(false)?;
     ensure!(
@@ -605,7 +607,7 @@ async fn modem_device_smoke(device: &std::path::Path) -> Result<()> {
     let mut bpf = aya::BpfLoader::new().load_file(object)?;
     configure_modem_probe(&mut bpf, device, &[], defense::doctor::openat_layout()?.1)?;
     let mut ring = RingBuf::try_from(bpf.take_map("DEFENSE_ALERTS").unwrap())?;
-    let attached = attach_probes(&mut bpf, &selected);
+    let attached = attach_probes(&mut bpf, &selected, &[]);
     ensure!(
         attached.reports[0].status == ProbeStatus::Active,
         "attach failed: {:?}",

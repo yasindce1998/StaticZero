@@ -64,3 +64,72 @@ fn malformed_object_is_rejected_without_loading_bpf() {
             && check["detail"].as_str().unwrap().contains("parse eBPF ELF")));
     assert_eq!(report["modules"][0]["status"], "failed");
 }
+
+#[test]
+fn tool_input_makes_userspace_module_available_in_doctor() {
+    // The overall preflight may still fail on environment checks (e.g.
+    // privileges on an unprivileged runner), so the assertion is on the
+    // module status in the JSON report, matching the other doctor tests.
+    let verdicts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let output = Command::new(env!("CARGO_BIN_EXE_staticzero-defense"))
+        .args(["--doctor", "--json", "--modules", "56", "--tool-input"])
+        .arg(format!("mlo={}", verdicts.display()))
+        .output()
+        .unwrap();
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("doctor prints its JSON report even when the preflight fails");
+    assert_eq!(report["modules"][0]["module"], 56);
+    assert_eq!(report["modules"][0]["status"], "available");
+    assert!(report["modules"][0]["detail"]
+        .as_str()
+        .unwrap()
+        .contains("mlo-analyzer"));
+    // No module-level failure is allowed.
+    assert!(report["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|module| module["status"] != "failed"));
+}
+
+#[test]
+fn userspace_module_without_tool_input_is_unsupported() {
+    let output = Command::new(env!("CARGO_BIN_EXE_staticzero-defense"))
+        .args(["--doctor", "--json", "--modules", "61"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["modules"][0]["module"], 61);
+    assert_eq!(report["modules"][0]["status"], "unsupported");
+    assert!(report["modules"][0]["detail"]
+        .as_str()
+        .unwrap()
+        .contains("--tool-input d2c="));
+}
+
+#[test]
+fn unreadable_tool_input_fails_the_preflight() {
+    let output = Command::new(env!("CARGO_BIN_EXE_staticzero-defense"))
+        .args(["--doctor", "--json", "--modules", "62", "--tool-input"])
+        .arg("osnma=/nonexistent/verdicts.jsonl")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["modules"][0]["module"], 62);
+    assert_eq!(report["modules"][0]["status"], "failed");
+}
+
+#[test]
+fn invalid_tool_input_kind_is_rejected() {
+    let output = Command::new(env!("CARGO_BIN_EXE_staticzero-defense"))
+        .args(["--doctor", "--tool-input"])
+        .arg("bogus=/tmp/x")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8(output.stderr)
+        .unwrap()
+        .contains("unknown tool kind"));
+}

@@ -64,6 +64,12 @@ struct Cli {
     #[arg(long, value_delimiter = ',')]
     allow_modem_pid: Vec<u32>,
 
+    /// Feed a next-gen tool verdict stream into the pipeline:
+    /// KIND=PATH with KIND one of mlo (Module 56), d2c (Module 61),
+    /// or osnma (Module 62). PATH is a followed JSON-lines file, or - for stdin.
+    #[arg(long = "tool-input", value_name = "KIND=PATH")]
+    tool_inputs: Vec<String>,
+
     /// Enable basic telecom detection (modules 16-23)
     #[arg(long, default_value_t = true)]
     telecom_detect: bool,
@@ -131,6 +137,7 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+    let tool_inputs = defense::adapters::parse_tool_inputs(&cli.tool_inputs)?;
     let mut groups = Vec::new();
     for (enabled, group) in [
         (cli.all || cli.telecom_detect, ProbeGroup::Telecom),
@@ -171,6 +178,7 @@ async fn main() -> Result<()> {
         &selected,
         &cli.modem_path,
         &cli.allow_modem_pid,
+        &tool_inputs,
     );
     if cli.doctor || !preflight.passed() {
         preflight.print(cli.json)?;
@@ -269,7 +277,7 @@ async fn main() -> Result<()> {
         &cli.allow_modem_pid,
         filename_offset,
     )?;
-    let attached = attach_probes(&mut bpf, &selected);
+    let attached = attach_probes(&mut bpf, &selected, &tool_inputs);
     for report in &attached.reports {
         match report.status {
             ProbeStatus::Active => info!(module = report.module, "active: {}", report.detail),
@@ -334,6 +342,23 @@ async fn main() -> Result<()> {
             }
         }
     });
+
+    // ── Userspace tool adapters (Modules 56, 61, 62) ────────────────────────
+    for (kind, path) in &tool_inputs {
+        let tx = alert_tx.clone();
+        let tool_running = running.clone();
+        let kind = *kind;
+        let path = path.clone();
+        if path == std::path::Path::new("-") {
+            tokio::task::spawn_blocking(move || {
+                defense::adapters::run_tool_input_stdin(kind, tx, tool_running)
+            });
+        } else {
+            tokio::spawn(async move {
+                defense::adapters::run_tool_input_file(kind, path, tx, tool_running).await
+            });
+        }
+    }
 
     // ── Feedback consumer (bus → adaptive thresholds) ───────────────────────
     let feedback_bus = bus.clone();

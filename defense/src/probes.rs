@@ -29,6 +29,11 @@ pub enum Attachment {
         category: &'static str,
         event: &'static str,
     },
+    /// Fed by a userspace tool verdict stream (`--tool-input KIND=PATH`)
+    /// rather than a kernel probe.
+    Userspace {
+        tool: &'static str,
+    },
     Unsupported(&'static str),
 }
 
@@ -212,12 +217,15 @@ pub static PROBES: &[ProbeSpec] = &[
     pending!(54, "detect_oran_ric", "O-RAN RIC Security Monitor", Rf),
     pending!(55, "detect_ais_integrity", "AIS Signal Integrity", Rf),
     // Next-generation wireless (Modules 56-70)
-    pending!(
-        56,
-        "detect_mlo_integrity",
-        "Wi-Fi 6/7 MLO Integrity Monitor",
-        NextGenWifi
-    ),
+    ProbeSpec {
+        module: 56,
+        program: "detect_mlo_integrity",
+        description: "Wi-Fi 6/7 MLO Integrity Monitor",
+        group: ProbeGroup::NextGenWifi,
+        attachment: Attachment::Userspace {
+            tool: "mlo-analyzer",
+        },
+    },
     pending!(
         57,
         "detect_secure_ranging",
@@ -242,18 +250,24 @@ pub static PROBES: &[ProbeSpec] = &[
         "DECT-2020 NR Mesh Integrity",
         NextGenIot
     ),
-    pending!(
-        61,
-        "detect_d2c_cell",
-        "D2C Satellite Cell Verification",
-        D2c
-    ),
-    pending!(
-        62,
-        "detect_gnss_auth",
-        "GNSS Authentication Monitor (OSNMA)",
-        D2c
-    ),
+    ProbeSpec {
+        module: 61,
+        program: "detect_d2c_cell",
+        description: "D2C Satellite Cell Verification",
+        group: ProbeGroup::D2c,
+        attachment: Attachment::Userspace {
+            tool: "d2c-monitor",
+        },
+    },
+    ProbeSpec {
+        module: 62,
+        program: "detect_gnss_auth",
+        description: "GNSS Authentication Monitor (OSNMA)",
+        group: ProbeGroup::D2c,
+        attachment: Attachment::Userspace {
+            tool: "osnma-verify",
+        },
+    },
     pending!(
         63,
         "detect_ntn_regen_anomaly",
@@ -409,41 +423,85 @@ pub struct AttachedProbes {
 /// the perf event itself was opened on. The kernel rejects pinning the same
 /// program into additional per-CPU perf events with EEXIST, so per-CPU
 /// attachment of a single program is impossible by design.
-pub fn attach_probes(bpf: &mut Bpf, selected: &[&'static ProbeSpec]) -> AttachedProbes {
+///
+/// Userspace-adapter modules (56, 61, 62) are active when their
+/// `--tool-input` verdict stream is configured; their alerts are ingested by
+/// the adapter tasks, not by this loader.
+pub fn attach_probes(
+    bpf: &mut Bpf,
+    selected: &[&'static ProbeSpec],
+    tool_inputs: &[(crate::adapters::ToolKind, std::path::PathBuf)],
+) -> AttachedProbes {
     let reports = selected
         .iter()
-        .map(|spec| {
-            let Attachment::TracePoint { category, event } = spec.attachment else {
-                let Attachment::Unsupported(reason) = spec.attachment else {
-                    unreachable!()
-                };
-                return ProbeReport::new(spec, ProbeStatus::Unsupported, reason);
-            };
-            let result = (|| -> Result<()> {
-                let program: &mut TracePoint = bpf
-                    .program_mut(spec.program)
-                    .context("program missing from eBPF object")?
-                    .try_into()?;
-                program.load().context("verifier rejected program")?;
-                program
-                    .attach(category, event)
-                    .context("tracepoint attachment failed")?;
-                Ok(())
-            })();
-            match result {
-                Ok(()) => ProbeReport::new(
-                    spec,
-                    ProbeStatus::Active,
-                    format!(
-                        "tracepoint {category}/{event} (probe runs on all CPUs \
-                         via the tracepoint program array)"
+        .map(|spec| match spec.attachment {
+            Attachment::TracePoint { category, event } => {
+                let result = (|| -> Result<()> {
+                    let program: &mut TracePoint = bpf
+                        .program_mut(spec.program)
+                        .context("program missing from eBPF object")?
+                        .try_into()?;
+                    program.load().context("verifier rejected program")?;
+                    program
+                        .attach(category, event)
+                        .context("tracepoint attachment failed")?;
+                    Ok(())
+                })();
+                match result {
+                    Ok(()) => ProbeReport::new(
+                        spec,
+                        ProbeStatus::Active,
+                        format!(
+                            "tracepoint {category}/{event} (probe runs on all CPUs \
+                                 via the tracepoint program array)"
+                        ),
                     ),
-                ),
-                Err(error) => ProbeReport::new(spec, ProbeStatus::Failed, format!("{error:#}")),
+                    Err(error) => ProbeReport::new(spec, ProbeStatus::Failed, format!("{error:#}")),
+                }
+            }
+            Attachment::Userspace { tool } => userspace_report(spec, tool, tool_inputs),
+            Attachment::Unsupported(reason) => {
+                ProbeReport::new(spec, ProbeStatus::Unsupported, reason)
             }
         })
         .collect();
     AttachedProbes { reports }
+}
+
+/// Report a userspace-adapter module: active when its tool input is
+/// configured, otherwise unsupported with activation instructions.
+fn userspace_report(
+    spec: &ProbeSpec,
+    tool: &'static str,
+    tool_inputs: &[(crate::adapters::ToolKind, std::path::PathBuf)],
+) -> ProbeReport {
+    let kind = crate::adapters::tool_kind_for_module(spec.module);
+    match kind {
+        Some(kind) => match tool_inputs.iter().find(|(input, _)| *input == kind) {
+            Some((_, path)) => ProbeReport::new(
+                spec,
+                ProbeStatus::Active,
+                format!(
+                    "userspace adapter active: {tool} verdicts from {} (--tool-input {})",
+                    path.display(),
+                    kind.as_str()
+                ),
+            ),
+            None => ProbeReport::new(
+                spec,
+                ProbeStatus::Unsupported,
+                format!(
+                    "userspace adapter: configure --tool-input {}=<path> to feed {tool} verdicts",
+                    kind.as_str()
+                ),
+            ),
+        },
+        None => ProbeReport::new(
+            spec,
+            ProbeStatus::Failed,
+            "userspace attachment without a tool kind mapping",
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -466,7 +524,46 @@ mod tests {
                 matches!(spec.attachment, Attachment::TracePoint { .. }),
                 spec.module == 22
             );
+            assert_eq!(
+                matches!(spec.attachment, Attachment::Userspace { .. }),
+                matches!(spec.module, 56 | 61 | 62)
+            );
         }
+    }
+
+    #[test]
+    fn userspace_modules_activate_with_tool_inputs() {
+        let spec = PROBES
+            .iter()
+            .find(|spec| spec.module == 56)
+            .expect("module 56 registered");
+        let Attachment::Userspace { tool } = spec.attachment else {
+            panic!("module 56 must be a userspace module");
+        };
+        assert_eq!(tool, "mlo-analyzer");
+
+        // Without a configured input the module reports unsupported.
+        let inputs = Vec::new();
+        let report = userspace_report(spec, tool, &inputs);
+        assert_eq!(report.status, ProbeStatus::Unsupported);
+        assert!(report.detail.contains("--tool-input mlo="));
+
+        // With a configured input the module reports active.
+        let inputs = vec![(
+            crate::adapters::ToolKind::Mlo,
+            std::path::PathBuf::from("/tmp/findings.jsonl"),
+        )];
+        let report = userspace_report(spec, tool, &inputs);
+        assert_eq!(report.status, ProbeStatus::Active);
+        assert!(report.detail.contains("mlo-analyzer"));
+
+        // A different kind's input does not activate it.
+        let inputs = vec![(
+            crate::adapters::ToolKind::D2c,
+            std::path::PathBuf::from("/tmp/cells.jsonl"),
+        )];
+        let report = userspace_report(spec, tool, &inputs);
+        assert_eq!(report.status, ProbeStatus::Unsupported);
     }
 
     #[test]
